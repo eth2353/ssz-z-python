@@ -1,0 +1,23 @@
+{
+  "lodestar-z": {
+    "repository": "https://github.com/ChainSafe/lodestar-z",
+    "branch": "main",
+    "commit": "ba4f89e967bdb498f1d856f699f1ba2b863be330",
+    "license": "Apache-2.0"
+  },
+  "hashtree-z": {
+    "repository": "https://github.com/ChainSafe/hashtree-z",
+    "commit": "9b0fdad8f5159b8d7ccc3b5d74f18f63a3881482"
+  },
+  "hashtree": {
+    "repository": "https://github.com/offchainlabs/hashtree",
+    "commit": "fba14494dada4420440d985c2c516341d9c24b9b",
+    "license": "MIT"
+  },
+  "consensus-specs": {
+    "repository": "https://github.com/ethereum/consensus-specs",
+    "tag": "v1.7.0-beta.4",
+    "commit": "aa16bb4c156184e9548a997d53efaf2a228a6304",
+    "purpose": "Schemas in native/consensus.zig and official SSZ static vectors"
+  }
+}

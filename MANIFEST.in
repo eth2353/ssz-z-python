@@ -1,0 +1,10 @@
+include build.zig setup.py vendor/UPSTREAM.json vendor/PATCHES.md
+recursive-include native *.zig *.h
+recursive-include vendor *.zig *.zon *.c *.h *.S LICENSE* COPYING* UPSTREAM.json
+recursive-include tests *.py *.json *.yaml *.ssz_snappy LICENSE*
+recursive-include tools *.py
+prune vendor/lodestar-z/.git
+prune vendor/hashtree-z/.git
+prune vendor/hashtree/.git
+
+prune src/ssz_z/_native
