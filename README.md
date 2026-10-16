@@ -95,6 +95,55 @@ raise `ssz_z.SSZError` (a `ValueError` subclass). Unknown type/fork/preset names
 raise `ValueError`. Progressive collections have no SSZ length limit; the binding caps inputs and
 serialized outputs at 512 MiB.
 
+## Fast path for blocks and other immutable values
+
+`load_ssz`, `load_json`, and `load_obj` return an immutable `NativeValue` instead
+of materializing a Python tree. Existing dictionary APIs retain their return
+values and remain useful for editing small objects.
+
+```python
+proposal_type = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
+with proposal_type.load_ssz(response_bytes) as proposal:
+    header = proposal.header_dict()               # consensus JSON header
+    block_root = proposal.block_hash_tree_root()  # 32-byte unsigned block root
+    slot = proposal.slot                         # scalar projection, no native call
+    with proposal.sign(signature) as signed:      # attach an existing 96-byte BLS signature
+        publication_bytes = signed.to_ssz()      # immutable bytes, no additional copy
+# publication_bytes remains valid after both values close
+```
+
+For JSON production responses, use
+`proposal_type.load_json(response_bytes, wrapped=True)` to parse the REST
+`data` field directly in Zig. For a bare JSON value, omit `wrapped=True`.
+`signed.to_json()` returns **wire JSON bytes**; pass those bytes to the HTTP
+client directly rather than JSON-encoding them again.
+
+The SSZ path above performs two native operations: validate the input and
+project/hash the block body. The header and unsigned block root are computed
+together and cached. Signing copies the encoded bytes once into their signed
+wrapper, preserving proof/blob bytes; it performs no BLS cryptography.
+`to_ssz()` and cached roots do not cross the native boundary. Type metadata is
+resolved on first use and cached separately.
+
+`NativeValue.hash_tree_root()` hashes the complete value, including any
+contents/signed envelope; `block_hash_tree_root()` specifically hashes the
+unsigned block. `header_dict()` returns decimal/hex strings for signer APIs.
+`field("body.signed_execution_payload_bid.message.builder_index")` projects a
+scalar/byte field from nested containers without decoding the full object.
+Gloas block/envelope values also expose `.builder_index`.
+
+Values own Python-managed immutable SSZ buffers; no foreign pointers or native
+arenas outlive a call. Each value serializes its operations with a lock, and
+`close()` is idempotent and waits for in-flight operations. Independent values
+can execute native operations concurrently with the GIL released. Context
+managers release buffers early; ordinary Python garbage collection is also
+sufficient. `to_obj()` creates an independent editable Python tree, while
+`to_json_value()` creates a JSON-compatible tree. Construct a replacement with
+`codec.load_obj(edited_value)` after editing.
+
+See [performance/report.md](performance/report.md) for the sampled real-block
+comparison, reproduction commands, and remaining JSON/dictionary costs.
+
 ## Beacon API block production and publishing
 
 Electra and Fulu also expose `BeaconBlockContents`, `SignedBeaconBlockContents`,
@@ -187,9 +236,13 @@ python -m ziglang fmt --check build.zig native
 `-Dpreset=minimal` builds only that preset. `zig-out` is for direct Zig builds;
 Python packaging installs its own artifacts into `ssz_z/_native`.
 
-Python uses `ctypes` to call a small C ABI. Conversion between Python objects and
-native values passes through consensus JSON; SSZ encoding, validation, decoding,
-and Merkleization run in Lodestar-Z. `hash_tree_root_from_ssz` hashes serialized
-bytes directly, avoiding Python object/JSON conversion. Native calls release
-the GIL, use independent per-call arenas, and copy returned data into Python
-before freeing it. [native/bindings.h](native/bindings.h) documents the ABI.
+Python uses `ctypes` to call a small C ABI. SSZ encoding, validation, decoding,
+and Merkleization run in Lodestar-Z. The fast path retains validated SSZ bytes
+and uses schema-directed native JSON parsing/formatting with bulk hex conversion.
+The dictionary API normalizes JSON values in Python; SSZ serialization of those
+values crosses through JSON once. JSON-only dictionary conversions no longer
+round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
+serialized bytes directly. Native calls release the GIL and use independent
+per-call arenas; dynamically returned buffers are copied into Python and freed
+before returning. [native/bindings.h](native/bindings.h) documents ABI version 2.
+Rebuild the package when updating from an earlier native ABI.

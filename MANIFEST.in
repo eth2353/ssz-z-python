@@ -1,4 +1,6 @@
 include build.zig setup.py vendor/UPSTREAM.json vendor/PATCHES.md
+include VALIDATION.md performance/benchmark.py performance/report.md performance/pilot-summary.json
+include performance/baseline-profile.txt performance/optimized-profile.txt
 recursive-include native *.zig *.h
 recursive-include vendor *.zig *.zon *.c *.h *.S LICENSE* COPYING* UPSTREAM.json
 recursive-include tests *.py *.json *.yaml *.ssz_snappy LICENSE*

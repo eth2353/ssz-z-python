@@ -1,0 +1,30 @@
+         377432 function calls (325130 primitive calls) in 0.161 seconds
+
+   Ordered by: cumulative time
+   List reduced from 40 to 22 due to restriction <22>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+52400/100    0.064    0.000    0.103    0.001 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/types.py:17(_normalize)
+       25    0.000    0.000    0.066    0.003 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/types.py:123(serialize)
+       25    0.000    0.000    0.043    0.002 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/types.py:132(deserialize)
+       50    0.031    0.001    0.032    0.001 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/_native.py:55(call)
+       25    0.000    0.000    0.028    0.001 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/types.py:137(from_json)
+       25    0.000    0.000    0.023    0.001 /Users/luca/projects/serenita/ssz-z-python/src/ssz_z/types.py:141(to_json)
+       25    0.000    0.000    0.018    0.001 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/__init__.py:183(dumps)
+       25    0.000    0.000    0.018    0.001 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/encoder.py:183(encode)
+       25    0.018    0.001    0.018    0.001 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/encoder.py:205(iterencode)
+       25    0.000    0.000    0.008    0.000 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/__init__.py:299(loads)
+       25    0.000    0.000    0.007    0.000 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/decoder.py:333(decode)
+    19050    0.007    0.000    0.007    0.000 {method 'hex' of 'bytes' objects}
+       25    0.007    0.000    0.007    0.000 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/json/decoder.py:344(raw_decode)
+    78600    0.007    0.000    0.007    0.000 {method 'get' of 'dict' objects}
+    71700    0.006    0.000    0.007    0.000 {built-in method builtins.isinstance}
+    19050    0.007    0.000    0.007    0.000 {built-in method fromhex}
+    77675    0.005    0.000    0.005    0.000 {built-in method builtins.len}
+    19050    0.002    0.000    0.002    0.000 {method 'startswith' of 'str' objects}
+    19600    0.002    0.000    0.002    0.000 {method 'keys' of 'dict' objects}
+     4900    0.001    0.000    0.001    0.000 <frozen abc>:117(__instancecheck__)
+     4100    0.001    0.000    0.001    0.000 {method 'fullmatch' of 're.Pattern' objects}
+     4900    0.001    0.000    0.001    0.000 {built-in method _abc._abc_instancecheck}
+
+

@@ -1,5 +1,6 @@
 """Official release vectors. Set SSZ_SPEC_TESTS to an extracted tests directory."""
 
+import json
 import os
 from pathlib import Path
 
@@ -40,3 +41,11 @@ def test_official_ssz_static(path):
     assert codec.hash_tree_root(value) == expected_root
     assert codec.from_json(expected_value) == value
     assert codec.from_json(codec.to_json(value)) == value
+    with codec.load_ssz(serialized) as native:
+        assert native.to_ssz() is serialized
+        assert native.hash_tree_root() == expected_root
+        assert native.to_obj() == value
+        assert json.loads(native.to_json()) == codec.to_json(value)
+    with codec.load_json(json.dumps(expected_value)) as native:
+        assert native.to_ssz() == serialized
+        assert native.hash_tree_root() == expected_root

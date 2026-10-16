@@ -33,7 +33,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 1:
+    if library.ssz_z_abi_version() != 2:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,
@@ -75,7 +75,10 @@ def call(preset: str, fork: str, name: str, operation: int, data: bytes = b"") -
             raise MemoryError("Native SSZ allocation failed")
         result = ctypes.string_at(output, size.value)
         if status:
-            raise SSZError(f"{fork}.{name} ({preset}): {result.decode('utf-8')}")
+            message = result.decode("utf-8")
+            if message == "OutOfMemory":
+                raise MemoryError("Native SSZ allocation failed")
+            raise SSZError(f"{fork}.{name} ({preset}): {message}")
         return result
     finally:
         if output.value:

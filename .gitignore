@@ -11,3 +11,7 @@ dist/
 *.egg-info/
 src/ssz_z/_native/
 fixtures/
+
+performance/pilot/
+performance/bulk-pilot/
+performance/results/

@@ -5,13 +5,13 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from typing import Any
 
 from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, SSZError, call
+from .value import NativeValue, _Layout, input_bytes
 
 _DECIMAL = re.compile(r"[0-9]+\Z", re.ASCII)
-_HEX = re.compile(r"0x(?:[0-9a-fA-F]{2})*\Z", re.ASCII)
 
 
 def _normalize(schema: dict, value: Any, path: str, *, python: bool = False) -> Any:
@@ -53,8 +53,13 @@ def _normalize(schema: dict, value: Any, path: str, *, python: bool = False) -> 
             _normalize(schema["element"], item, f"{path}[{index}]", python=python)
             for index, item in enumerate(value)
         ]
-    if isinstance(value, str) and _HEX.fullmatch(value):
-        raw = bytes.fromhex(value[2:])
+    if isinstance(value, str) and value.startswith("0x"):
+        try:
+            raw = bytes.fromhex(value[2:])
+        except ValueError as error:
+            raise SSZError(f"{path}: invalid hex") from error
+        if len(raw) * 2 != len(value) - 2:
+            raise SSZError(f"{path}: hex must have even length and no whitespace")
     elif isinstance(value, (bytes, bytearray, memoryview)):
         raw = bytes(value)
     else:
@@ -88,7 +93,7 @@ def _parse_json(value, *, scalar_strings=True):
     if (
         scalar_strings
         and isinstance(value, str)
-        and (_HEX.fullmatch(value) or _DECIMAL.fullmatch(value))
+        and (value.startswith("0x") or _DECIMAL.fullmatch(value))
     ):
         return value
     if isinstance(value, (str, bytes, bytearray)):
@@ -117,24 +122,28 @@ class SSZType:
 
     def serialize(self, value: Any) -> bytes:
         """Encode a Python value as canonical SSZ bytes."""
+        if isinstance(value, NativeValue):
+            self._check_value(value)
+            return value.to_ssz()
         normalized = _normalize(self._schema, value, self.name)
         encoded = json.dumps(normalized, separators=(",", ":"), ensure_ascii=True).encode()
         return call(self.preset, self.fork, self.name, 0, encoded)
 
     def deserialize(self, data: bytes | bytearray | memoryview) -> Any:
         """Validate and decode SSZ into integers, bytes, dicts and lists."""
-        if not isinstance(data, (bytes, bytearray, memoryview)):
-            raise TypeError("SSZ data must be bytes-like")
-        encoded = call(self.preset, self.fork, self.name, 1, bytes(data))
+        encoded = call(self.preset, self.fork, self.name, 1, input_bytes(data))
         return _normalize(self._schema, json.loads(encoded), self.name, python=True)
 
     def from_json(self, value: Any) -> Any:
         """Decode a JSON-compatible value or JSON text into a Python value."""
-        return self.deserialize(self.serialize(_parse_json(value)))
+        return _normalize(self._schema, _parse_json(value), self.name, python=True)
 
     def to_json(self, value: Any) -> Any:
         """Encode as consensus JSON: decimal strings and 0x-prefixed hex."""
-        return json.loads(call(self.preset, self.fork, self.name, 1, self.serialize(value)))
+        if isinstance(value, NativeValue):
+            self._check_value(value)
+            return value.to_json_value()
+        return _normalize(self._schema, value, self.name)
 
     def dumps(self, value: Any, **kwargs) -> str:
         """Return consensus JSON text; keyword arguments pass to json.dumps."""
@@ -144,7 +153,9 @@ class SSZType:
         """Decode a complete JSON document, rejecting duplicate keys."""
         if not isinstance(text, (str, bytes, bytearray)):
             raise TypeError("JSON text must be str or bytes-like")
-        return self.deserialize(self.serialize(_parse_json(text, scalar_strings=False)))
+        return _normalize(
+            self._schema, _parse_json(text, scalar_strings=False), self.name, python=True
+        )
 
     encode = serialize
     decode = deserialize
@@ -156,13 +167,52 @@ class SSZType:
 
     def hash_tree_root(self, value: Any) -> bytes:
         """Return the 32-byte SSZ root of a Python value."""
+        if isinstance(value, NativeValue):
+            self._check_value(value)
+            return value.hash_tree_root()
         return self.hash_tree_root_from_ssz(self.serialize(value))
+
+    @cached_property
+    def _layout(self):
+        return _Layout(self._schema)
+
+    @cached_property
+    def _signed_codec(self):
+        target = get_type("Signed" + self.name, fork=self.fork, preset=self.preset)
+        if self.name != "BeaconBlockContents":
+            fields = target._schema.get("fields", {})
+            if tuple(fields) != ("message", "signature") or fields["message"] != self._schema:
+                raise ValueError("No compatible signed wrapper for this value")
+        return target
+
+    def _check_value(self, value: NativeValue):
+        if value.codec != self:
+            raise ValueError("SSZ value belongs to a different type, fork, or preset")
+
+    def load_ssz(self, data: bytes | bytearray | memoryview) -> NativeValue:
+        """Validate SSZ in one native call and retain immutable bytes without decoding."""
+        return NativeValue(self, data)
+
+    def load_json(
+        self, text: str | bytes | bytearray | memoryview, *, wrapped: bool = False
+    ) -> NativeValue:
+        """Parse JSON directly in Zig; wrapped=True reads a REST response's data field."""
+        if isinstance(text, str):
+            if len(text) > MAX_INPUT_SIZE:
+                raise SSZError("JSON input too large")
+            text = text.encode("utf-8")
+        else:
+            text = input_bytes(text)
+        data = call(self.preset, self.fork, self.name, 8 if wrapped else 7, text)
+        return NativeValue._from_validated(self, data)
+
+    def load_obj(self, value: Any) -> NativeValue:
+        """Encode a Python value once, retaining its native SSZ fast path."""
+        return NativeValue._from_validated(self, self.serialize(value))
 
     def hash_tree_root_from_ssz(self, data: bytes | bytearray | memoryview) -> bytes:
         """Validate and hash serialized SSZ directly without materializing its value."""
-        if not isinstance(data, (bytes, bytearray, memoryview)):
-            raise TypeError("SSZ data must be bytes-like")
-        return call(self.preset, self.fork, self.name, 2, bytes(data))
+        return call(self.preset, self.fork, self.name, 2, input_bytes(data))
 
 
 def _check(fork: str, preset: str) -> None:

@@ -30,6 +30,7 @@ export fn ssz_z_call(
         output_len.* = output.len;
         return 1;
     };
+    if (writer.written().len == 0) return 0;
     const output = std.heap.page_allocator.dupe(u8, writer.written()) catch return 2;
     output_ptr.* = output.ptr;
     output_len.* = output.len;
@@ -41,7 +42,7 @@ export fn ssz_z_free(ptr: [*]u8, len: usize) void {
 }
 
 export fn ssz_z_abi_version() u32 {
-    return 1;
+    return 2;
 }
 
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: u8, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
@@ -88,6 +89,11 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
 fn process(comptime T: type, allocator: std.mem.Allocator, operation: u8, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
     var json: std.json.Stringify = .{ .writer = &writer.writer };
     if (operation == 4) return schema(T, &json);
+    if (operation == 6) return T.serialized.validate(input);
+    if (operation == 9) {
+        try T.serialized.validate(input);
+        return @import("block_projection.zig").header(T, allocator, input, writer);
+    }
     if (operation == 2) {
         try T.serialized.validate(input);
         var root: [32]u8 = undefined;
@@ -99,18 +105,18 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: u8, input:
         try writer.writer.writeAll(&root);
         return;
     }
-    if (operation > 3) return error.UnknownOperation;
+    if (operation > 3 and operation != 7 and operation != 8) return error.UnknownOperation;
     // BeaconState contains multi-megabyte fixed vectors; allocate it on the heap
     // so calls from Python worker threads do not exhaust their stacks.
     const value = try allocator.create(T.Type);
     value.* = T.default_value;
-    if (operation == 0) {
+    if (operation == 0 or operation == 7 or operation == 8) {
         var scanner = std.json.Scanner.initCompleteInput(allocator, input);
         defer scanner.deinit();
-        if (comptime ssz.isFixedType(T)) {
-            try T.deserializeFromJson(&scanner, value);
+        if (operation == 8) {
+            try @import("json_decode.zig").readRest(T, allocator, &scanner, value);
         } else {
-            try T.deserializeFromJson(allocator, &scanner, value);
+            try @import("json_decode.zig").read(T, allocator, &scanner, value);
         }
         if (try scanner.next() != .end_of_document) return error.TrailingJson;
         const size = if (comptime ssz.isFixedType(T)) T.fixed_size else T.serializedSize(value);
@@ -129,11 +135,7 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: u8, input:
             try T.deserializeFromBytes(allocator, input, value);
         }
     }
-    if (comptime ssz.isFixedType(T)) {
-        try T.serializeIntoJson(&json, value);
-    } else {
-        try T.serializeIntoJson(allocator, &json, value);
-    }
+    try @import("json_encode.zig").write(T, allocator, writer, value);
 }
 
 fn schema(comptime T: type, json: *std.json.Stringify) !void {
