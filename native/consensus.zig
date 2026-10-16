@@ -453,6 +453,12 @@ pub const electra = struct {
     pub const SignedBLSToExecutionChanges = BLSToExecutionChanges;
     pub const HistoricalBlockRoots = BlockRoots;
     pub const HistoricalStateRoots = StateRoots;
+    const api = @import("beacon_api.zig").Types(@This(), false);
+    pub const BeaconBlockContents = api.BeaconBlockContents;
+    pub const SignedBeaconBlockContents = api.SignedBeaconBlockContents;
+    pub const BlindedBeaconBlockBody = api.BlindedBeaconBlockBody;
+    pub const BlindedBeaconBlock = api.BlindedBeaconBlock;
+    pub const SignedBlindedBeaconBlock = api.SignedBlindedBeaconBlock;
 };
 pub const fulu = struct {
     pub const Bytes4 = ssz.ByteVectorType(4);
@@ -947,6 +953,12 @@ pub const fulu = struct {
     pub const SignedBLSToExecutionChanges = BLSToExecutionChanges;
     pub const HistoricalBlockRoots = BlockRoots;
     pub const HistoricalStateRoots = StateRoots;
+    const api = @import("beacon_api.zig").Types(@This(), true);
+    pub const BeaconBlockContents = api.BeaconBlockContents;
+    pub const SignedBeaconBlockContents = api.SignedBeaconBlockContents;
+    pub const BlindedBeaconBlockBody = api.BlindedBeaconBlockBody;
+    pub const BlindedBeaconBlock = api.BlindedBeaconBlock;
+    pub const SignedBlindedBeaconBlock = api.SignedBlindedBeaconBlock;
 };
 pub const gloas = struct {
     pub const Bytes4 = ssz.ByteVectorType(4);

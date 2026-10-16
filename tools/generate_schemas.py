@@ -202,6 +202,17 @@ def generate(spec_root, destination):
             if canonical in generator.output and alias not in generator.output:
                 generator.output[alias] = canonical
         body = "\n".join(f"pub const {name} = {code};" for name, code in generator.output.items())
+        if fork in {"electra", "fulu"}:
+            is_fulu = str(fork == "fulu").lower()
+            body += f'\nconst api = @import("beacon_api.zig").Types(@This(), {is_fulu});'
+            for name in (
+                "BeaconBlockContents",
+                "SignedBeaconBlockContents",
+                "BlindedBeaconBlockBody",
+                "BlindedBeaconBlock",
+                "SignedBlindedBeaconBlock",
+            ):
+                body += f"\npub const {name} = api.{name};"
         sections.append(f"pub const {fork} = struct {{\n{body}\n}};")
     header = f"""//! Generated from ethereum/consensus-specs {VERSION} ({COMMIT}).
 //! Regenerate with tools/generate_schemas.py. The engine is Lodestar-Z SSZ.

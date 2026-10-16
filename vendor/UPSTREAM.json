@@ -19,5 +19,11 @@
     "tag": "v1.7.0-beta.4",
     "commit": "aa16bb4c156184e9548a997d53efaf2a228a6304",
     "purpose": "Schemas in native/consensus.zig and official SSZ static vectors"
+  },
+  "beacon-APIs": {
+    "repository": "https://github.com/ethereum/beacon-APIs",
+    "branch": "master",
+    "commit": "01e99a6530b22941f619bde525cbf8bb61991d42",
+    "purpose": "Electra/Fulu block contents and blinded block schemas in native/beacon_api.zig"
   }
 }

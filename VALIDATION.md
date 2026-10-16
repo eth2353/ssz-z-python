@@ -20,7 +20,7 @@ archives and passed under Python 3.14.6:
 
 Each case verified decoding, byte-identical encoding, the published hash tree
 root, JSON input conversion, and JSON output round trips. The run also included
-75 bundled official smoke vectors: **24,139 passed**.
+75 bundled official smoke vectors and 57 binding tests: **24,196 passed**.
 
 Archive SHA-256 hashes:
 
@@ -29,11 +29,14 @@ Archive SHA-256 hashes:
 
 ## Binding checks
 
-The suite without external vector files passed **121 tests**, including the
-75 bundled vectors and 46 local tests. It covers every exported codec's default
+The suite without external vector files passed **132 tests**, including the
+75 bundled vectors and 57 local tests. It covers every exported codec's default
 round trip across all nine fork/preset combinations; integer boundaries,
 malformed JSON, offsets, lengths, bitfields, deterministic SSZ mutations,
-concurrent calls, preset-specific sizes, and Gloas progressive hashing.
+concurrent calls, preset-specific sizes, and Gloas progressive hashing. Beacon
+API coverage includes all five production/publishing codecs for Electra/Fulu
+in all presets, Fulu cell-proof bounds, independent contents roots and SSZ
+offsets, and matching full/blinded payload, body, block, and signed-block roots.
 
 Gnosis has no vectors in the official Ethereum release. Its codecs passed the
 local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
@@ -45,7 +48,7 @@ local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
 - Source distribution contains native source and no prebuilt native binaries.
 - Wheel contains all three preset libraries and has no runtime dependencies.
 - Clean Python 3.10.20 installation of the wheel passed round-trip and root
-  checks for all 1,401 exported fork/preset codecs.
+  checks for all 1,413 exported fork/preset codecs.
 - Wheel tag: `py3-none-macosx_11_0_arm64`; native deployment target is macOS 11.0.
 - Schema regeneration reproduces the committed generated source exactly.
 - Ruff lint/format and Zig formatting checks passed.

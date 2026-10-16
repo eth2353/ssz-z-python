@@ -95,6 +95,35 @@ raise `ssz_z.SSZError` (a `ValueError` subclass). Unknown type/fork/preset names
 raise `ValueError`. Progressive collections have no SSZ length limit; the binding caps inputs and
 serialized outputs at 512 MiB.
 
+## Beacon API block production and publishing
+
+Electra and Fulu also expose `BeaconBlockContents`, `SignedBeaconBlockContents`,
+`BlindedBeaconBlockBody`, `BlindedBeaconBlock`, and `SignedBlindedBeaconBlock`
+for every preset. These use the current Beacon API wire fields:
+
+```python
+contents = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
+value = contents.default()  # {"block": ..., "kzg_proofs": [], "blobs": []}
+encoded = contents.serialize(value)
+assert contents.deserialize(encoded) == value
+```
+
+Signed contents use `signed_block` instead of `block`. Blinded bodies replace
+`execution_payload` with `execution_payload_header`, preserving field order and
+all other body fields. A header containing the full payload's transaction and
+withdrawal roots produces the same body and block roots as the full block.
+
+The contents SSZ root includes the proofs and blobs. To obtain the block root
+for signing, hash the contained `BeaconBlock` rather than the contents envelope.
+Electra's proof list is bounded by `MAX_BLOB_COMMITMENTS_PER_BLOCK`; Fulu's cell
+proof list uses `FIELD_ELEMENTS_PER_EXT_BLOB * MAX_BLOB_COMMITMENTS_PER_BLOCK`
+(33,554,432). These are SSZ type bounds; validating relationships between blob,
+commitment, and proof counts belongs to the caller's consensus validation.
+
+Schemas follow [ethereum/beacon-APIs](https://github.com/ethereum/beacon-APIs/tree/01e99a6530b22941f619bde525cbf8bb61991d42),
+with the revision recorded in `vendor/UPSTREAM.json` and implementation in
+[native/beacon_api.zig](native/beacon_api.zig).
+
 ## Specification compatibility
 
 The SSZ algorithms come from Lodestar-Z's latest pinned `main`. Consensus schemas
