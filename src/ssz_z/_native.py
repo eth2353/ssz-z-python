@@ -48,7 +48,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 3:
+    if library.ssz_z_abi_version() != 1:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,

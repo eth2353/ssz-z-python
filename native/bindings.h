@@ -8,7 +8,7 @@
  * 4 type schema JSON, 5 type names JSON, 6 validate SSZ (empty output),
  * 7 REST {data:...}->SSZ,
  * 8 block header SSZ (112 bytes) followed by unsigned block root (32 bytes).
- * ABI version 3. Calls share no mutable binding state.
+ * ABI version 1. Calls share no mutable binding state.
  * Status: 0 success, 1 invalid input (output is an error name), 2 allocation failure.
  * Free every non-NULL output with ssz_z_free, including error messages.
  * Inputs and serialized outputs are limited to 512 MiB. */
