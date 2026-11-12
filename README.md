@@ -73,8 +73,8 @@ print(attestation.schema)      # metadata reflected from the actual Zig type
 
 Defaults are `fork="gloas"`, `preset="mainnet"`. `list_types` includes inherited
 consensus types; primitive types have their own `fork="primitive"` namespace and
-are also resolved by `get_type` from every fork. `encode`/`decode` are aliases
-for `serialize`/`deserialize`.
+are also resolved by `get_type` from every fork. Use `serialize`/`deserialize`
+for SSZ bytes and `dumps`/`loads` for JSON text.
 
 | SSZ value | Python representation | Consensus JSON |
 | --- | --- | --- |
@@ -188,7 +188,8 @@ parsing. No specification code runs during generation. The generated
   all enclosing block, state, and envelope types.
 - Minimal Gloas `PTC_SIZE=16`, including attestations and the state PTC window.
 
-The public codecs use these release-specific, vector-verified schemas. Gloas
+Fork codecs come directly from these generated, vector-verified schemas; there
+is no fallback to upstream consensus layouts or legacy type names. Gloas
 remains a draft; later releases may change layouts and roots. One local compiler
 quota adjustment is documented in [vendor/PATCHES.md](vendor/PATCHES.md). It
 allows the 46-field progressive state to compile and changes no SSZ algorithm.
@@ -244,5 +245,6 @@ values crosses through JSON once. JSON-only dictionary conversions no longer
 round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
 serialized bytes directly. Native calls release the GIL and use independent
 per-call arenas; dynamically returned buffers are copied into Python and freed
-before returning. [native/bindings.h](native/bindings.h) documents ABI version 2.
-Rebuild the package when updating from an earlier native ABI.
+before returning. [native/bindings.h](native/bindings.h) documents ABI version 3.
+Python and native libraries are built and installed together; the loader rejects
+a mismatched native ABI.

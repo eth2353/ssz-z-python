@@ -191,16 +191,6 @@ def generate(spec_root, destination):
                 "ProgressiveContainer",
             }:
                 generator.reference(ast.Name(id=name))
-        aliases = {
-            "BlobKzgCommitments": "BlobKZGCommitments",
-            "SignedBLSToExecutionChanges": "BLSToExecutionChanges",
-            "HistoricalBlockRoots": "BlockRoots",
-            "HistoricalStateRoots": "StateRoots",
-            "PtcWindow": "PayloadTimelinessCommitteeWindow",
-        }
-        for alias, canonical in aliases.items():
-            if canonical in generator.output and alias not in generator.output:
-                generator.output[alias] = canonical
         body = "\n".join(f"pub const {name} = {code};" for name, code in generator.output.items())
         if fork in {"electra", "fulu"}:
             is_fulu = str(fork == "fulu").lower()
@@ -222,15 +212,9 @@ const constants = @import("constants");
 const preset_module = @import("preset");
 const preset = preset_module.preset;
 const ptc_size = if (preset_module.active_preset == .minimal) 16 else preset.PTC_SIZE;
-pub const primitive = struct {{}};
+pub const primitive = @import("primitive");
 """
-    footer = """
-pub fn resolve(comptime fork: []const u8, comptime name: []const u8, comptime original: type) type {
-    const extra = @field(@This(), fork);
-    return if (@hasDecl(extra, name)) @field(extra, name) else original;
-}
-"""
-    destination.write_text(header + "\n".join(sections) + footer)
+    destination.write_text(header + "\n".join(sections) + "\n")
 
 
 if __name__ == "__main__":

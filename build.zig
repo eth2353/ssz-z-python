@@ -69,16 +69,13 @@ pub fn build(b: *std.Build) void {
         const preset = module(b, target, optimize, "src/preset/root.zig");
         preset.addImport("build_options", build_options);
         preset.addImport("constants", constants);
-        const consensus = module(b, target, optimize, "src/consensus_types/root.zig");
-        consensus.addImport("build_options", build_options);
-        consensus.addImport("ssz", ssz);
-        consensus.addImport("constants", constants);
-        consensus.addImport("preset", preset);
+        const primitive = module(b, target, optimize, "src/consensus_types/primitive.zig");
+        primitive.addImport("ssz", ssz);
         const root = b.createModule(.{ .root_source_file = b.path("native/bindings.zig"), .target = target, .optimize = optimize, .link_libc = true });
         root.addImport("ssz", ssz);
         root.addImport("preset", preset);
         root.addImport("constants", constants);
-        root.addImport("consensus_types", consensus);
+        root.addImport("primitive", primitive);
         const lib = b.addLibrary(.{ .name = b.fmt("ssz_z_{s}", .{preset_name}), .linkage = .dynamic, .root_module = root });
         b.installArtifact(lib);
     }

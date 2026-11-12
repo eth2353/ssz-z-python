@@ -12,7 +12,27 @@ from ssz_z import FORKS, PRESETS, SSZError, get_type, list_types
 @pytest.mark.parametrize("fork", FORKS)
 def test_requested_forks_and_presets(preset, fork):
     names = list_types(fork=fork, preset=preset)
-    assert {"BeaconState", "BeaconBlock", "SignedBeaconBlock", "Attestation"} <= set(names)
+    assert {
+        "BeaconState",
+        "BeaconBlock",
+        "SignedBeaconBlock",
+        "Attestation",
+        "BlobKZGCommitments",
+        "BLSToExecutionChanges",
+        "BlockRoots",
+        "StateRoots",
+    } <= set(names)
+    legacy_names = {
+        "BlobKzgCommitments",
+        "SignedBLSToExecutionChanges",
+        "HistoricalBlockRoots",
+        "HistoricalStateRoots",
+        "PtcWindow",
+    }
+    assert not legacy_names.intersection(names)
+    for name in legacy_names:
+        with pytest.raises(ValueError, match="Unknown SSZ type"):
+            get_type(name, fork=fork, preset=preset)
     for name in names:
         codec = get_type(name, fork=fork, preset=preset)
         value = codec.default()

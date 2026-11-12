@@ -14,7 +14,7 @@ SPEC_VERSION = "v1.7.0-beta.4"
 
 
 class Operation(IntEnum):
-    """Stable ABI values mirrored by native/bindings.zig and native/bindings.h."""
+    """ABI values mirrored by native/bindings.zig and native/bindings.h."""
 
     JSON_TO_SSZ = 0
     SSZ_TO_JSON = 1
@@ -23,9 +23,8 @@ class Operation(IntEnum):
     TYPE_SCHEMA = 4
     LIST_TYPES = 5
     VALIDATE_SSZ = 6
-    LOAD_JSON = 7  # Same conversion as JSON_TO_SSZ; retained for ABI compatibility.
-    LOAD_REST_JSON = 8
-    BLOCK_PROJECTION = 9
+    REST_JSON_TO_SSZ = 7
+    BLOCK_PROJECTION = 8
 
 
 class SSZError(ValueError):
@@ -49,7 +48,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 2:
+    if library.ssz_z_abi_version() != 3:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,

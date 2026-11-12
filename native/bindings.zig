@@ -1,10 +1,9 @@
 const std = @import("std");
 const ssz = @import("ssz");
-const consensus = @import("consensus_types");
-const compat = @import("consensus.zig");
+const consensus = @import("consensus.zig");
 const max_input_size = 512 * 1024 * 1024;
 
-// Stable ABI values, mirrored by Python's _native.Operation and bindings.h.
+// ABI values, mirrored by Python's _native.Operation and bindings.h.
 const Operation = enum(u8) {
     json_to_ssz = 0,
     ssz_to_json = 1,
@@ -13,10 +12,8 @@ const Operation = enum(u8) {
     type_schema = 4,
     list_types = 5,
     validate_ssz = 6,
-    // Same conversion as json_to_ssz; retain both values for ABI compatibility.
-    load_json = 7,
-    load_rest_json = 8,
-    block_projection = 9,
+    rest_json_to_ssz = 7,
+    block_projection = 8,
     // Keep unknown bytes representable so they return an ABI error, not a trap.
     _,
 };
@@ -59,7 +56,7 @@ export fn ssz_z_free(ptr: [*]u8, len: usize) void {
 }
 
 export fn ssz_z_abi_version() u32 {
-    return 2;
+    return 3;
 }
 
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
@@ -68,7 +65,6 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
     inline for (.{ "primitive", "electra", "fulu", "gloas" }) |fork_name| {
         if (std.mem.eql(u8, fork, fork_name)) {
             const namespace = @field(consensus, fork_name);
-            const extra = @field(compat, fork_name);
             if (operation == .list_types) {
                 var json: std.json.Stringify = .{ .writer = &writer.writer };
                 try json.beginArray();
@@ -78,9 +74,6 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
                         if (@hasDecl(T, "kind")) try json.write(decl.name);
                     }
                 }
-                inline for (@typeInfo(extra).@"struct".decls) |decl| {
-                    if (!@hasDecl(namespace, decl.name)) try json.write(decl.name);
-                }
                 try json.endArray();
                 return;
             }
@@ -88,13 +81,8 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
                 const T = @field(namespace, decl.name);
                 if (comptime @TypeOf(T) == type) {
                     if (@hasDecl(T, "kind")) {
-                        if (std.mem.eql(u8, name, decl.name)) return process(compat.resolve(fork_name, decl.name, T), allocator, operation, input, writer);
+                        if (std.mem.eql(u8, name, decl.name)) return process(T, allocator, operation, input, writer);
                     }
-                }
-            }
-            inline for (@typeInfo(extra).@"struct".decls) |decl| {
-                if (!@hasDecl(namespace, decl.name)) {
-                    if (std.mem.eql(u8, name, decl.name)) return process(@field(extra, decl.name), allocator, operation, input, writer);
                 }
             }
             return error.UnknownType;
@@ -124,17 +112,17 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation,
             }
             return writer.writer.writeAll(&root);
         },
-        .json_to_ssz, .ssz_to_json, .default_json, .load_json, .load_rest_json => {},
+        .json_to_ssz, .ssz_to_json, .default_json, .rest_json_to_ssz => {},
         else => return error.UnknownOperation,
     }
     // BeaconState contains multi-megabyte fixed vectors; allocate it on the heap
     // so calls from Python worker threads do not exhaust their stacks.
     const value = try allocator.create(T.Type);
     value.* = T.default_value;
-    if (operation == .json_to_ssz or operation == .load_json or operation == .load_rest_json) {
+    if (operation == .json_to_ssz or operation == .rest_json_to_ssz) {
         var scanner = std.json.Scanner.initCompleteInput(allocator, input);
         defer scanner.deinit();
-        if (operation == .load_rest_json) {
+        if (operation == .rest_json_to_ssz) {
             try @import("json_decode.zig").readRest(T, allocator, &scanner, value);
         } else {
             try @import("json_decode.zig").read(T, allocator, &scanner, value);

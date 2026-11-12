@@ -6,7 +6,7 @@ const constants = @import("constants");
 const preset_module = @import("preset");
 const preset = preset_module.preset;
 const ptc_size = if (preset_module.active_preset == .minimal) 16 else preset.PTC_SIZE;
-pub const primitive = struct {};
+pub const primitive = @import("primitive");
 pub const electra = struct {
     pub const Bytes4 = ssz.ByteVectorType(4);
     pub const Version = Bytes4;
@@ -449,10 +449,6 @@ pub const electra = struct {
         data: AttestationData,
         signature: BLSSignature,
     });
-    pub const BlobKzgCommitments = BlobKZGCommitments;
-    pub const SignedBLSToExecutionChanges = BLSToExecutionChanges;
-    pub const HistoricalBlockRoots = BlockRoots;
-    pub const HistoricalStateRoots = StateRoots;
     const api = @import("beacon_api.zig").Types(@This(), false);
     pub const BeaconBlockContents = api.BeaconBlockContents;
     pub const SignedBeaconBlockContents = api.SignedBeaconBlockContents;
@@ -949,10 +945,6 @@ pub const fulu = struct {
     pub const PartialDataColumnGroupID = ssz.FixedContainerType(struct {
         beacon_block_root: Root,
     });
-    pub const BlobKzgCommitments = BlobKZGCommitments;
-    pub const SignedBLSToExecutionChanges = BLSToExecutionChanges;
-    pub const HistoricalBlockRoots = BlockRoots;
-    pub const HistoricalStateRoots = StateRoots;
     const api = @import("beacon_api.zig").Types(@This(), true);
     pub const BeaconBlockContents = api.BeaconBlockContents;
     pub const SignedBeaconBlockContents = api.SignedBeaconBlockContents;
@@ -1562,13 +1554,4 @@ pub const gloas = struct {
         message: ProposerPreferences,
         signature: BLSSignature,
     });
-    pub const BlobKzgCommitments = BlobKZGCommitments;
-    pub const SignedBLSToExecutionChanges = BLSToExecutionChanges;
-    pub const HistoricalBlockRoots = BlockRoots;
-    pub const HistoricalStateRoots = StateRoots;
-    pub const PtcWindow = PayloadTimelinessCommitteeWindow;
 };
-pub fn resolve(comptime fork: []const u8, comptime name: []const u8, comptime original: type) type {
-    const extra = @field(@This(), fork);
-    return if (@hasDecl(extra, name)) @field(extra, name) else original;
-}

@@ -157,9 +157,6 @@ class SSZType:
             self._schema, _parse_json(text, scalar_strings=False), self.name, python=True
         )
 
-    encode = serialize
-    decode = deserialize
-
     def default(self) -> Any:
         """Return an independent, zero/default Python value."""
         encoded = call(self.preset, self.fork, self.name, Operation.DEFAULT_JSON)
@@ -207,7 +204,7 @@ class SSZType:
             self.preset,
             self.fork,
             self.name,
-            Operation.LOAD_REST_JSON if wrapped else Operation.LOAD_JSON,
+            Operation.REST_JSON_TO_SSZ if wrapped else Operation.JSON_TO_SSZ,
             text,
         )
         return NativeValue._from_validated(self, data)
@@ -230,7 +227,7 @@ def _check(fork: str, preset: str) -> None:
 
 @lru_cache(maxsize=12)
 def list_types(*, fork: str = "gloas", preset: str = "mainnet") -> tuple[str, ...]:
-    """List upstream SSZ type names, including types inherited from earlier forks."""
+    """List the canonical SSZ type names for a fork and preset."""
     _check(fork, preset)
     return tuple(json.loads(call(preset, fork, "", Operation.LIST_TYPES)))
 

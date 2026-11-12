@@ -22,7 +22,6 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--corpus", type=Path, required=True)
 parser.add_argument("--spy-site-packages", type=Path, required=True)
-parser.add_argument("--vero-src", type=Path, help="Optional legacy argument; Vero is not imported")
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=3)
 parser.add_argument("--limit", type=int, default=0)
