@@ -3,7 +3,8 @@
 These are preliminary results from **8 evenly spaced real blocks per network,
 one timed pass**, collected on macOS arm64 with Python 3.12.9. The user requested
 no full benchmark. These measurements do not establish corpus-wide averages or
-tail latency. The saved aggregate is [pilot-summary.json](pilot-summary.json).
+tail latency. The saved aggregate is [pilot-summary.json](pilot-summary.json). These samples
+predate later API simplifications; the harness and examples use the current API.
 
 The comparison uses the same process, interpreter and inputs for the optimized
 SSZ-backed API and spy-ssz commit
@@ -65,12 +66,12 @@ block and are separate from the comparison above.
 from ssz_z import get_type
 
 codec = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
-with codec.load_ssz(response_bytes) as proposal:
-    header = proposal.header_dict()  # consensus JSON strings for signer APIs
-    root_bytes = proposal.block_hash_tree_root()
-    slot = proposal.slot
-    with proposal.sign(signature) as signed:
-        publication = signed.to_ssz()
+proposal = codec.load_ssz(response_bytes)
+header = proposal.header_dict()  # consensus JSON strings for signer APIs
+root_bytes = proposal.block_hash_tree_root()
+slot = proposal.slot
+signed = proposal.sign(signature)
+publication = signed.to_ssz()
 ```
 
 Use `load_json(response_bytes, wrapped=True)` for a REST response with a `data`
@@ -82,10 +83,10 @@ The SSZ proposal flow performs validation and one combined header/body-root
 projection in native code. It caches the header and block root, reads scalar
 fields directly from validated bytes, and attaches signatures with one buffer
 allocation. It performs no BLS signing. Metadata resolution is cached separately.
-Values own Python bytes, support context managers and idempotent `close()`, and
-keep returned publication bytes valid after closing. Python code and native
-libraries must be installed together; the loader checks that their ABI versions
-match. The current ABI is documented in
+Values own immutable Python bytes and use ordinary garbage collection. Returned
+publication bytes remain valid independently of their source value. Python code
+and native libraries must be installed together; the loader checks that their
+ABI versions match. The current ABI is documented in
 [native/bindings.h](../native/bindings.h).
 
 ## Reproduction
@@ -110,6 +111,6 @@ interpreter/platform metadata, source hashes and native library hashes. `--mode
 dict` exercises the convenience API instead. The committed pilot summary retains
 the metadata available at the time; later harness additions record more hashes.
 
-The full correctness suite passed **24,244 tests**, including 24,064 distinct
+The full correctness suite passed **24,247 tests**, including 24,064 distinct
 official beta.4 cases. This validation is independent of performance sampling;
 see [VALIDATION.md](../VALIDATION.md).

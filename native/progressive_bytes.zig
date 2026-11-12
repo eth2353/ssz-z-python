@@ -1,8 +1,7 @@
-//! Progressive byte lists use hex JSON, while upstream's generic progressive
-//! list uses arrays. Delegate only JSON conversion to the ordinary byte list.
+//! Preserve the JSON distinction between ProgressiveList[Byte] (hex) and
+//! ProgressiveList[uint8] (array), which share the same SSZ representation.
 const ssz = @import("ssz");
 const Base = ssz.FixedProgressiveListType(ssz.UintType(8));
-const Json = ssz.ByteListType(512 * 1024 * 1024);
 
 pub const Type = struct {
     pub const is_bytes = true;
@@ -19,6 +18,4 @@ pub const Type = struct {
     pub const serializeIntoBytes = Base.serializeIntoBytes;
     pub const deserializeFromBytes = Base.deserializeFromBytes;
     pub const serialized = Base.serialized;
-    pub const serializeIntoJson = Json.serializeIntoJson;
-    pub const deserializeFromJson = Json.deserializeFromJson;
 };

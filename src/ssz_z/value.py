@@ -1,12 +1,12 @@
-"""Immutable, validated SSZ-backed values with explicit, Python-owned lifetimes."""
+"""Immutable SSZ-backed values with Python-managed lifetimes."""
 
 import hashlib
 import json
 import struct
-from threading import RLock
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
+from ._native import MAX_INPUT_SIZE, Operation, SSZError
 
 if TYPE_CHECKING:
     from .types import SSZType
@@ -80,29 +80,29 @@ class _Layout:
         )
 
 
+@dataclass(frozen=True, slots=True, init=False)
 class NativeValue:
-    """A validated immutable SSZ buffer; no foreign pointer survives a native call.
+    """Immutable, validated SSZ bytes with cached roots and block projections.
 
-    Use SSZType.load_ssz/load_json/load_obj to create one. to_ssz() returns the
-    retained bytes without copying; projections and hashing skip Python trees.
-    close() is idempotent and waits for operations on this value to finish.
-    Bytes already returned to a caller remain valid after close().
+    Obtain a value with SSZType.load_ssz/load_json/load_obj. Python manages its
+    lifetime; returned bytes and derived values are independent of the source.
     """
 
-    __slots__ = ("_codec", "_ssz", "_root", "_header", "_block_root", "_lock")
+    codec: "SSZType"
+    _ssz: bytes = field(repr=False)
+    _root: bytes | None = field(repr=False, compare=False)
+    _projection: tuple[bytes, bytes] | None = field(repr=False, compare=False)
 
     def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview):
         data = input_bytes(data)
-        call(codec.preset, codec.fork, codec.name, Operation.VALIDATE_SSZ, data)
+        codec._call(Operation.VALIDATE_SSZ, data)
         self._initialize(codec, data)
 
     def _initialize(self, codec, data):
-        self._codec = codec
-        self._ssz = data
-        self._root = None
-        self._header = None
-        self._block_root = None
-        self._lock = RLock()
+        object.__setattr__(self, "codec", codec)
+        object.__setattr__(self, "_ssz", data)
+        object.__setattr__(self, "_root", None)
+        object.__setattr__(self, "_projection", None)
 
     @classmethod
     def _from_validated(cls, codec, data):
@@ -110,109 +110,59 @@ class NativeValue:
         value._initialize(codec, data)
         return value
 
-    @property
-    def codec(self) -> "SSZType":
-        return self._codec
-
-    @property
-    def closed(self) -> bool:
-        with self._lock:
-            return self._ssz is None
-
-    def _data(self):
-        if self._ssz is None:
-            raise ValueError("SSZ value is closed")
-        return self._ssz
-
-    def close(self) -> None:
-        with self._lock:
-            self._ssz = None
-            self._root = self._header = self._block_root = None
-
-    def __enter__(self) -> "NativeValue":
-        with self._lock:
-            self._data()
-        return self
-
-    def __exit__(self, *args) -> None:
-        self.close()
-
     def to_ssz(self) -> bytes:
-        with self._lock:
-            return self._data()
+        return self._ssz
 
     def to_json(self) -> bytes:
         """Encode consensus JSON directly in Zig, without Python materialization."""
-        with self._lock:
-            return call(
-                self.codec.preset,
-                self.codec.fork,
-                self.codec.name,
-                Operation.SSZ_TO_JSON,
-                self._data(),
-            )
+        return self.codec._call(Operation.SSZ_TO_JSON, self._ssz)
 
     def to_obj(self) -> Any:
         """Materialize an independent Python dict/list/int/bytes value for editing."""
-        with self._lock:
-            return self.codec.deserialize(self._data())
+        return self.codec.deserialize(self._ssz)
 
     def to_json_value(self) -> Any:
         """Materialize a JSON-compatible value; to_json() is the wire fast path."""
         return json.loads(self.to_json())
 
     def hash_tree_root(self) -> bytes:
-        with self._lock:
-            data = self._data()
-            if self._root is None:
-                if self.codec.name in {"BeaconBlock", "BlindedBeaconBlock"}:
-                    self._project_block()
-                    self._root = self._block_root
-                else:
-                    self._root = call(
-                        self.codec.preset,
-                        self.codec.fork,
-                        self.codec.name,
-                        Operation.HASH_TREE_ROOT,
-                        data,
-                    )
-            return self._root
-
-    def _project_block(self):
-        data = self._data()
-        if self._header is None:
-            projection = call(
-                self.codec.preset,
-                self.codec.fork,
-                self.codec.name,
-                Operation.BLOCK_PROJECTION,
-                data,
+        root = self._root
+        if root is None:
+            root = (
+                self.block_hash_tree_root()
+                if self.codec.name in {"BeaconBlock", "BlindedBeaconBlock"}
+                else self.codec._call(Operation.HASH_TREE_ROOT, self._ssz)
             )
-            if len(projection) != 144:
+            object.__setattr__(self, "_root", root)
+        return root
+
+    def _project_block(self) -> tuple[bytes, bytes]:
+        projection = self._projection
+        if projection is None:
+            data = self.codec._call(Operation.BLOCK_PROJECTION, self._ssz)
+            if len(data) != 144:
                 raise RuntimeError("Invalid block projection from native library")
-            self._header, self._block_root = projection[:112], projection[112:]
+            projection = (data[:112], data[112:])
+            object.__setattr__(self, "_projection", projection)
             if self.codec.name in {"BeaconBlock", "BlindedBeaconBlock"}:
-                self._root = self._block_root
+                object.__setattr__(self, "_root", projection[1])
+        return projection
 
     def header_dict(self) -> dict[str, str]:
         """Return a BeaconBlockHeader in consensus JSON form, using one body hash."""
-        with self._lock:
-            self._project_block()
-            data = self._header
-            slot, proposer = struct.unpack_from("<QQ", data)
-            return {
-                "slot": str(slot),
-                "proposer_index": str(proposer),
-                "parent_root": "0x" + data[16:48].hex(),
-                "state_root": "0x" + data[48:80].hex(),
-                "body_root": "0x" + data[80:112].hex(),
-            }
+        data = self._project_block()[0]
+        slot, proposer = struct.unpack_from("<QQ", data)
+        return {
+            "slot": str(slot),
+            "proposer_index": str(proposer),
+            "parent_root": "0x" + data[16:48].hex(),
+            "state_root": "0x" + data[48:80].hex(),
+            "body_root": "0x" + data[80:112].hex(),
+        }
 
     def block_hash_tree_root(self) -> bytes:
         """Hash the unsigned block, including when this value is a contents envelope."""
-        with self._lock:
-            self._project_block()
-            return self._block_root
+        return self._project_block()[1]
 
     def field(self, path: str | tuple[str, ...]) -> Any:
         """Project a scalar/byte field from nested containers without a native call."""
@@ -220,12 +170,11 @@ class NativeValue:
             path = tuple(path.split("."))
         if not isinstance(path, tuple) or not path or not all(isinstance(p, str) for p in path):
             raise TypeError("field path must be a dot-separated string or tuple of field names")
-        with self._lock:
-            data = memoryview(self._data())
-            layout = self.codec._layout
-            for part in path:
-                layout, data = layout.field(data, part)
-            return layout.scalar(data)
+        data = memoryview(self._ssz)
+        layout = self.codec._layout
+        for part in path:
+            layout, data = layout.field(data, part)
+        return layout.scalar(data)
 
     def _block_path(self):
         name = self.codec.name
@@ -275,38 +224,37 @@ class NativeValue:
             signature = input_bytes(signature)
         if len(signature) != 96:
             raise SSZError("Signature must contain exactly 96 bytes")
-        with self._lock:
-            data = self._data()
-            target = self.codec._signed_codec
-            if self.codec.name == "BeaconBlockContents":
-                a, b, c = struct.unpack_from("<III", data)
-                parts = (
-                    struct.pack("<III", a, b + 100, c + 100),
-                    struct.pack("<I", 100),
-                    signature,
-                    memoryview(data)[a:],
-                )
-            else:
-                parts = (
-                    (struct.pack("<I", 100), signature, data)
-                    if self.codec._layout.size is None
-                    else (data, signature)
-                )
-            size = sum(len(part) for part in parts)
-            if size > MAX_INPUT_SIZE:
-                raise SSZError(f"Signed output exceeds {MAX_INPUT_SIZE} bytes")
-            signed = NativeValue._from_validated(target, b"".join(parts))
-            signed._header, signed._block_root = self._header, self._block_root
-            if self.codec.name != "BeaconBlockContents" and self._root is not None:
-                chunks = [signature[i : i + 32].ljust(32, b"\0") for i in range(0, 96, 32)]
-                sig_root = hashlib.sha256(
-                    hashlib.sha256(chunks[0] + chunks[1]).digest()
-                    + hashlib.sha256(chunks[2] + bytes(32)).digest()
-                ).digest()
-                signed._root = hashlib.sha256(self._root + sig_root).digest()
-            return signed
+        data = self._ssz
+        target = self.codec._signed_codec
+        if self.codec.name == "BeaconBlockContents":
+            a, b, c = struct.unpack_from("<III", data)
+            parts = (
+                struct.pack("<III", a, b + 100, c + 100),
+                struct.pack("<I", 100),
+                signature,
+                memoryview(data)[a:],
+            )
+        else:
+            parts = (
+                (struct.pack("<I", 100), signature, data)
+                if self.codec._layout.size is None
+                else (data, signature)
+            )
+        size = sum(len(part) for part in parts)
+        if size > MAX_INPUT_SIZE:
+            raise SSZError(f"Signed output exceeds {MAX_INPUT_SIZE} bytes")
+        signed = NativeValue._from_validated(target, b"".join(parts))
+        object.__setattr__(signed, "_projection", self._projection)
+        if self.codec.name != "BeaconBlockContents" and self._root is not None:
+            sig_root = hashlib.sha256(
+                hashlib.sha256(signature[:64]).digest()
+                + hashlib.sha256(signature[64:] + bytes(32)).digest()
+            ).digest()
+            object.__setattr__(signed, "_root", hashlib.sha256(self._root + sig_root).digest())
+        return signed
 
     def __repr__(self) -> str:
-        with self._lock:
-            state = "closed" if self._ssz is None else f"{len(self._ssz)} bytes"
-            return f"NativeValue({self.codec.name}, {self.codec.fork}/{self.codec.preset}, {state})"
+        return (
+            f"NativeValue({self.codec.name}, {self.codec.fork}/{self.codec.preset}, "
+            f"{len(self._ssz)} bytes)"
+        )

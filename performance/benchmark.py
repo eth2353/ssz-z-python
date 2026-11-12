@@ -181,13 +181,10 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                         if wire == "json"
                         else new_proposal.load_ssz(production_ssz)
                     )
-                    try:
-                        header = obj.header_dict()
-                        with obj.sign(signature) as signed:
-                            encoded = signed.to_json() if wire == "json" else signed.to_ssz()
-                        return header, "0x" + obj.block_hash_tree_root().hex(), encoded
-                    finally:
-                        obj.close()
+                    header = obj.header_dict()
+                    signed = obj.sign(signature)
+                    encoded = signed.to_json() if wire == "json" else signed.to_ssz()
+                    return header, "0x" + obj.block_hash_tree_root().hex(), encoded
                 decoded = (
                     new_proposal.from_json(
                         bytes(msgspec.json.decode(production_json, type=Response).data)
@@ -243,17 +240,11 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                         obj = timed(
                             lib, "json_decode", lambda: native.load_json(json_input, wrapped=True)
                         )
-                        try:
-                            json_output = timed(lib, "json_encode", obj.to_json)
-                            assert obj.to_ssz() == ssz_input
-                        finally:
-                            obj.close()
+                        json_output = timed(lib, "json_encode", obj.to_json)
+                        assert obj.to_ssz() == ssz_input
                         obj = timed(lib, "ssz_decode", lambda: native.load_ssz(ssz_input))
-                        try:
-                            assert timed(lib, "ssz_encode", obj.to_ssz) == ssz_input
-                            root = timed(lib, "object_to_root", obj.hash_tree_root)
-                        finally:
-                            obj.close()
+                        assert timed(lib, "ssz_encode", obj.to_ssz) == ssz_input
+                        root = timed(lib, "object_to_root", obj.hash_tree_root)
                     else:
                         obj = timed(
                             lib,

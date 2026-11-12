@@ -98,18 +98,17 @@ serialized outputs at 512 MiB.
 ## Fast path for blocks and other immutable values
 
 `load_ssz`, `load_json`, and `load_obj` return an immutable `NativeValue` instead
-of materializing a Python tree. Existing dictionary APIs retain their return
-values and remain useful for editing small objects.
+of materializing a Python tree. Dictionary APIs are useful for editing small
+objects.
 
 ```python
 proposal_type = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
-with proposal_type.load_ssz(response_bytes) as proposal:
-    header = proposal.header_dict()               # consensus JSON header
-    block_root = proposal.block_hash_tree_root()  # 32-byte unsigned block root
-    slot = proposal.slot                         # scalar projection, no native call
-    with proposal.sign(signature) as signed:      # attach an existing 96-byte BLS signature
-        publication_bytes = signed.to_ssz()      # immutable bytes, no additional copy
-# publication_bytes remains valid after both values close
+proposal = proposal_type.load_ssz(response_bytes)
+header = proposal.header_dict()               # consensus JSON header
+block_root = proposal.block_hash_tree_root()  # 32-byte unsigned block root
+slot = proposal.slot                         # scalar projection, no native call
+signed = proposal.sign(signature)            # attach an existing 96-byte BLS signature
+publication_bytes = signed.to_ssz()          # immutable bytes, no additional copy
 ```
 
 For JSON production responses, use
@@ -132,14 +131,12 @@ unsigned block. `header_dict()` returns decimal/hex strings for signer APIs.
 scalar/byte field from nested containers without decoding the full object.
 Gloas block/envelope values also expose `.builder_index`.
 
-Values own Python-managed immutable SSZ buffers; no foreign pointers or native
-arenas outlive a call. Each value serializes its operations with a lock, and
-`close()` is idempotent and waits for in-flight operations. Independent values
-can execute native operations concurrently with the GIL released. Context
-managers release buffers early; ordinary Python garbage collection is also
-sufficient. `to_obj()` creates an independent editable Python tree, while
-`to_json_value()` creates a JSON-compatible tree. Construct a replacement with
-`codec.load_obj(edited_value)` after editing.
+Values are frozen Python objects containing immutable SSZ bytes. Python manages
+their lifetime, just like any other bytes object. Values can be shared between
+threads; native calls release the GIL and own independent arenas. No foreign
+pointers outlive a call. `to_obj()` creates an independent editable Python tree,
+while `to_json_value()` creates a JSON-compatible tree. Construct a replacement
+with `codec.load_obj(edited_value)` after editing.
 
 See [performance/report.md](performance/report.md) for the sampled real-block
 comparison, reproduction commands, and remaining JSON/dictionary costs.
@@ -245,6 +242,7 @@ values crosses through JSON once. JSON-only dictionary conversions no longer
 round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
 serialized bytes directly. Native calls release the GIL and use independent
 per-call arenas; dynamically returned buffers are copied into Python and freed
-before returning. [native/bindings.h](native/bindings.h) documents ABI version 1.
+before returning. The native writer transfers ownership of its output buffer
+to the caller. [native/bindings.h](native/bindings.h) documents ABI version 1.
 Python and native libraries are built and installed together; the loader rejects
 a mismatched native ABI.

@@ -1,6 +1,7 @@
 const std = @import("std");
 const ssz = @import("ssz");
 const consensus = @import("consensus.zig");
+const json_codec = @import("json.zig");
 const max_input_size = 512 * 1024 * 1024;
 
 // ABI values, mirrored by Python's _native.Operation and bindings.h.
@@ -36,7 +37,8 @@ export fn ssz_z_call(
     output_len.* = 0;
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var writer: std.Io.Writer.Allocating = .init(arena.allocator());
+    var writer: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer writer.deinit();
     dispatch(arena.allocator(), fork_ptr[0..fork_len], name_ptr[0..name_len], @enumFromInt(operation), input_ptr[0..input_len], &writer) catch |err| {
         const message = @errorName(err);
         const output = std.heap.page_allocator.dupe(u8, message) catch return 2;
@@ -45,7 +47,7 @@ export fn ssz_z_call(
         return 1;
     };
     if (writer.written().len == 0) return 0;
-    const output = std.heap.page_allocator.dupe(u8, writer.written()) catch return 2;
+    const output = writer.toOwnedSlice() catch return 2;
     output_ptr.* = output.ptr;
     output_len.* = output.len;
     return 0;
@@ -123,18 +125,19 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation,
         var scanner = std.json.Scanner.initCompleteInput(allocator, input);
         defer scanner.deinit();
         if (operation == .rest_json_to_ssz) {
-            try @import("json_decode.zig").readRest(T, allocator, &scanner, value);
+            try json_codec.readRest(T, allocator, &scanner, value);
         } else {
-            try @import("json_decode.zig").read(T, allocator, &scanner, value);
+            try json_codec.read(T, allocator, &scanner, value);
         }
         if (try scanner.next() != .end_of_document) return error.TrailingJson;
         const size = if (comptime ssz.isFixedType(T)) T.fixed_size else T.serializedSize(value);
         if (size > max_input_size) return error.InputTooLarge;
-        const bytes = try allocator.alloc(u8, size);
+        try writer.ensureUnusedCapacity(size);
+        const bytes = try writer.writer.writableSlice(size);
         const written = T.serializeIntoBytes(value, bytes);
         if (written != size) return error.InvalidSize;
         try T.serialized.validate(bytes);
-        return writer.writer.writeAll(bytes);
+        return;
     }
     if (operation == .ssz_to_json) {
         try T.serialized.validate(input);
@@ -144,7 +147,7 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation,
             try T.deserializeFromBytes(allocator, input, value);
         }
     }
-    try @import("json_encode.zig").write(T, allocator, writer, value);
+    try json_codec.write(T, allocator, writer, value);
 }
 
 fn schema(comptime T: type, json: *std.json.Stringify) !void {
@@ -184,7 +187,7 @@ fn schema(comptime T: type, json: *std.json.Stringify) !void {
             }
         },
         .progressive_list, .progressive_bit_list => {
-            const is_bytes = @hasDecl(T, "is_bytes");
+            const is_bytes = json_codec.isBytes(T);
             try json.write(if (T.kind == .progressive_bit_list) "bitlist" else if (is_bytes) "bytelist" else "list");
             try json.objectField("progressive");
             try json.write(true);
