@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from typing import Any
 
-from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, SSZError, call
+from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, Operation, SSZError, call
 from .value import NativeValue, _Layout, input_bytes
 
 _DECIMAL = re.compile(r"[0-9]+\Z", re.ASCII)
@@ -127,11 +127,11 @@ class SSZType:
             return value.to_ssz()
         normalized = _normalize(self._schema, value, self.name)
         encoded = json.dumps(normalized, separators=(",", ":"), ensure_ascii=True).encode()
-        return call(self.preset, self.fork, self.name, 0, encoded)
+        return call(self.preset, self.fork, self.name, Operation.JSON_TO_SSZ, encoded)
 
     def deserialize(self, data: bytes | bytearray | memoryview) -> Any:
         """Validate and decode SSZ into integers, bytes, dicts and lists."""
-        encoded = call(self.preset, self.fork, self.name, 1, input_bytes(data))
+        encoded = call(self.preset, self.fork, self.name, Operation.SSZ_TO_JSON, input_bytes(data))
         return _normalize(self._schema, json.loads(encoded), self.name, python=True)
 
     def from_json(self, value: Any) -> Any:
@@ -162,7 +162,7 @@ class SSZType:
 
     def default(self) -> Any:
         """Return an independent, zero/default Python value."""
-        encoded = call(self.preset, self.fork, self.name, 3)
+        encoded = call(self.preset, self.fork, self.name, Operation.DEFAULT_JSON)
         return _normalize(self._schema, json.loads(encoded), self.name, python=True)
 
     def hash_tree_root(self, value: Any) -> bytes:
@@ -203,7 +203,13 @@ class SSZType:
             text = text.encode("utf-8")
         else:
             text = input_bytes(text)
-        data = call(self.preset, self.fork, self.name, 8 if wrapped else 7, text)
+        data = call(
+            self.preset,
+            self.fork,
+            self.name,
+            Operation.LOAD_REST_JSON if wrapped else Operation.LOAD_JSON,
+            text,
+        )
         return NativeValue._from_validated(self, data)
 
     def load_obj(self, value: Any) -> NativeValue:
@@ -212,7 +218,7 @@ class SSZType:
 
     def hash_tree_root_from_ssz(self, data: bytes | bytearray | memoryview) -> bytes:
         """Validate and hash serialized SSZ directly without materializing its value."""
-        return call(self.preset, self.fork, self.name, 2, input_bytes(data))
+        return call(self.preset, self.fork, self.name, Operation.HASH_TREE_ROOT, input_bytes(data))
 
 
 def _check(fork: str, preset: str) -> None:
@@ -226,7 +232,7 @@ def _check(fork: str, preset: str) -> None:
 def list_types(*, fork: str = "gloas", preset: str = "mainnet") -> tuple[str, ...]:
     """List upstream SSZ type names, including types inherited from earlier forks."""
     _check(fork, preset)
-    return tuple(json.loads(call(preset, fork, "", 5)))
+    return tuple(json.loads(call(preset, fork, "", Operation.LIST_TYPES)))
 
 
 @lru_cache(maxsize=4096)
@@ -239,5 +245,5 @@ def get_type(name: str, *, fork: str = "gloas", preset: str = "mainnet") -> SSZT
             namespace = "primitive"
         else:
             raise ValueError(f"Unknown SSZ type {name!r} for {fork}/{preset}")
-    schema = json.loads(call(preset, namespace, name, 4))
+    schema = json.loads(call(preset, namespace, name, Operation.TYPE_SCHEMA))
     return SSZType(name, namespace, preset, schema)

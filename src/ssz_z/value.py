@@ -6,7 +6,7 @@ import struct
 from threading import RLock
 from typing import TYPE_CHECKING, Any
 
-from ._native import MAX_INPUT_SIZE, SSZError, call
+from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
 
 if TYPE_CHECKING:
     from .types import SSZType
@@ -93,7 +93,7 @@ class NativeValue:
 
     def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview):
         data = input_bytes(data)
-        call(codec.preset, codec.fork, codec.name, 6, data)
+        call(codec.preset, codec.fork, codec.name, Operation.VALIDATE_SSZ, data)
         self._initialize(codec, data)
 
     def _initialize(self, codec, data):
@@ -144,7 +144,13 @@ class NativeValue:
     def to_json(self) -> bytes:
         """Encode consensus JSON directly in Zig, without Python materialization."""
         with self._lock:
-            return call(self.codec.preset, self.codec.fork, self.codec.name, 1, self._data())
+            return call(
+                self.codec.preset,
+                self.codec.fork,
+                self.codec.name,
+                Operation.SSZ_TO_JSON,
+                self._data(),
+            )
 
     def to_obj(self) -> Any:
         """Materialize an independent Python dict/list/int/bytes value for editing."""
@@ -163,13 +169,25 @@ class NativeValue:
                     self._project_block()
                     self._root = self._block_root
                 else:
-                    self._root = call(self.codec.preset, self.codec.fork, self.codec.name, 2, data)
+                    self._root = call(
+                        self.codec.preset,
+                        self.codec.fork,
+                        self.codec.name,
+                        Operation.HASH_TREE_ROOT,
+                        data,
+                    )
             return self._root
 
     def _project_block(self):
         data = self._data()
         if self._header is None:
-            projection = call(self.codec.preset, self.codec.fork, self.codec.name, 9, data)
+            projection = call(
+                self.codec.preset,
+                self.codec.fork,
+                self.codec.name,
+                Operation.BLOCK_PROJECTION,
+                data,
+            )
             if len(projection) != 144:
                 raise RuntimeError("Invalid block projection from native library")
             self._header, self._block_root = projection[:112], projection[112:]

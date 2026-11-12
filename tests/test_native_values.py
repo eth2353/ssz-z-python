@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from ssz_z import FORKS, PRESETS, NativeValue, SSZError, get_type
+from ssz_z._native import Operation
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -241,7 +242,10 @@ def test_proposal_does_not_repeat_native_operations(monkeypatch):
         value.block_hash_tree_root()
         value.header_dict()
         assert value.slot == 0
-    assert calls == [6, 9]  # One validation, one body hash; signing/encoding reuse bytes.
+    assert calls == [
+        Operation.VALIDATE_SSZ,
+        Operation.BLOCK_PROJECTION,
+    ]  # One validation, one body hash; signing/encoding reuse bytes.
 
 
 @pytest.mark.parametrize("fork", FORKS)

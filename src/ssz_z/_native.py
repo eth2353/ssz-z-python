@@ -2,6 +2,7 @@
 
 import ctypes
 import sys
+from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 
@@ -10,6 +11,21 @@ FORKS = ("electra", "fulu", "gloas")
 MAX_INPUT_SIZE = 512 * 1024 * 1024
 UPSTREAM_COMMIT = "ba4f89e967bdb498f1d856f699f1ba2b863be330"
 SPEC_VERSION = "v1.7.0-beta.4"
+
+
+class Operation(IntEnum):
+    """Stable ABI values mirrored by native/bindings.zig and native/bindings.h."""
+
+    JSON_TO_SSZ = 0
+    SSZ_TO_JSON = 1
+    HASH_TREE_ROOT = 2
+    DEFAULT_JSON = 3
+    TYPE_SCHEMA = 4
+    LIST_TYPES = 5
+    VALIDATE_SSZ = 6
+    LOAD_JSON = 7  # Same conversion as JSON_TO_SSZ; retained for ABI compatibility.
+    LOAD_REST_JSON = 8
+    BLOCK_PROJECTION = 9
 
 
 class SSZError(ValueError):
@@ -52,7 +68,7 @@ def _library(preset: str):
     return library
 
 
-def call(preset: str, fork: str, name: str, operation: int, data: bytes = b"") -> bytes:
+def call(preset: str, fork: str, name: str, operation: Operation, data: bytes = b"") -> bytes:
     if len(data) > MAX_INPUT_SIZE:
         raise SSZError(f"Input exceeds {MAX_INPUT_SIZE} bytes")
     library = _library(preset)
