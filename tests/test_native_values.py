@@ -89,7 +89,7 @@ def test_blob_contents_fast_path(fork, preset):
     "name", ["VoluntaryExit", "BeaconBlock", "ExecutionPayloadEnvelope", "ProposerPreferences"]
 )
 def test_sign_fixed_and_variable_values(name):
-    codec = get_type(name, preset="minimal")
+    codec = get_type(name, preset="minimal", fork="gloas")
     native = codec.default()
     # Exercise signing both before and after caching the unsigned root.
     for cached in (False, True):
@@ -101,7 +101,7 @@ def test_sign_fixed_and_variable_values(name):
         )
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
     with pytest.raises((SSZError, ValueError)):
-        get_type("Uint64").load_json(json_document(1)).sign(bytes(96))
+        get_type("Uint64", fork="primitive").load_json(json_document(1)).sign(bytes(96))
 
 
 @pytest.mark.parametrize(
@@ -124,11 +124,11 @@ def test_sign_fixed_and_variable_values(name):
 )
 def test_native_json_rejects_invalid_values(text):
     with pytest.raises(SSZError):
-        get_type("Checkpoint").load_json(text)
+        get_type("Checkpoint", fork="gloas").load_json(text)
 
 
 def test_native_json_order_escapes_and_rest():
-    codec = get_type("Checkpoint")
+    codec = get_type("Checkpoint", fork="gloas")
     expected = {"epoch": 12, "root": bytes(32)}
     text = '{"root":"0x' + "00" * 32 + '","epo\\u0063h":"0012"}'
     native = codec.load_json(text)
@@ -153,13 +153,13 @@ def test_native_json_order_escapes_and_rest():
     "bad", ["", "0x", "0x0", "0xzz", "0x00 00", "00000000", "0X00000000", "0x００００００００"]
 )
 def test_hex_validation_all_paths(bad):
-    codec = get_type("Bytes4")
+    codec = get_type("Bytes4", fork="primitive")
     with pytest.raises(SSZError):
         codec.load_json(json.dumps(bad))
 
 
 def test_input_snapshots_and_type_checks():
-    codec = get_type("Checkpoint")
+    codec = get_type("Checkpoint", fork="gloas")
     encoded = codec.default().to_ssz()
     source = bytearray(encoded)
     native = codec.load_ssz(source)
@@ -172,22 +172,24 @@ def test_input_snapshots_and_type_checks():
     with pytest.raises(FrozenInstanceError):
         native._ssz = b"changed"
     with pytest.raises(FrozenInstanceError):
-        native.codec = get_type("Uint64")
+        native.codec = get_type("Uint64", fork="primitive")
     del native
     assert output == encoded
     with pytest.raises(SSZError):
         NativeValue(codec, b"bad")
     native = codec.load_ssz(encoded)
     with pytest.raises(TypeError):
-        get_type("BeaconBlock").load_json(native)
+        get_type("BeaconBlock", fork="gloas").load_json(native)
     with pytest.raises(ValueError, match="not a block"):
         BlockValue(native)
     with pytest.raises(TypeError):
         native.field(1)
     with pytest.raises(ValueError):
         native.field("missing")
-    block = get_type("BeaconBlock", preset="minimal").load_json(
-        json_document(json.loads(get_type("BeaconBlock", preset="minimal").default().to_json()))
+    block = get_type("BeaconBlock", preset="minimal", fork="gloas").load_json(
+        json_document(
+            json.loads(get_type("BeaconBlock", preset="minimal", fork="gloas").default().to_json())
+        )
     )
     for signature in (bytes(95), bytes(97), "0x" + "gg" * 96, "0x" + "00 " * 96):
         with pytest.raises(SSZError):
@@ -195,7 +197,7 @@ def test_input_snapshots_and_type_checks():
 
 
 def test_native_concurrent_read_and_sign():
-    codec = get_type("BeaconBlock", preset="minimal")
+    codec = get_type("BeaconBlock", preset="minimal", fork="gloas")
     expected_obj = json.loads(codec.default().to_json())
     encoded = codec.load_json(json_document(expected_obj)).to_ssz()
     native = codec.load_ssz(encoded)
@@ -277,7 +279,7 @@ def test_native_nested_json_order_and_binary_bits(fork):
 
 
 def test_native_failure_after_partial_allocation():
-    codec = get_type("ExecutionPayload", preset="minimal")
+    codec = get_type("ExecutionPayload", preset="minimal", fork="gloas")
     value = json_value(json.loads(codec.default().to_json()))
     value["transactions"] = ["0x010203"] * 32
     value["slot_number"] = "bad"

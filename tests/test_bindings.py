@@ -46,7 +46,7 @@ def test_requested_forks_and_presets(preset, fork):
 @pytest.mark.parametrize("bits", [8, 16, 32, 64, 128, 256])
 @pytest.mark.parametrize("preset", PRESETS)
 def test_unsigned_integers(bits, preset):
-    codec = get_type(f"Uint{bits}", preset=preset)
+    codec = get_type(f"Uint{bits}", preset=preset, fork="primitive")
     for number in [0, 1, (1 << bits) - 1]:
         encoded = number.to_bytes(bits // 8, "little")
         value = codec.load_json(json.dumps(str(number)))
@@ -60,7 +60,7 @@ def test_unsigned_integers(bits, preset):
 
 
 def test_known_checkpoint_root_and_unordered_json():
-    codec = get_type("Checkpoint")
+    codec = get_type("Checkpoint", fork="gloas")
     root = b"\x12" * 32
     value = codec.load_json('{"root":"0x' + root.hex() + '","epoch":"123"}')
     assert value.hash_tree_root() == hashlib.sha256((123).to_bytes(32, "little") + root).digest()
@@ -72,7 +72,7 @@ def test_known_checkpoint_root_and_unordered_json():
 )
 def test_bad_container(value):
     with pytest.raises(SSZError):
-        get_type("Checkpoint").load_json(json_document(value))
+        get_type("Checkpoint", fork="gloas").load_json(json_document(value))
 
 
 @pytest.mark.parametrize(
@@ -80,16 +80,16 @@ def test_bad_container(value):
 )
 def test_bad_json(text):
     with pytest.raises(SSZError):
-        get_type("Checkpoint").load_json(text)
+        get_type("Checkpoint", fork="gloas").load_json(text)
 
 
 def test_invalid_binary_inputs():
-    boolean = get_type("Boolean")
+    boolean = get_type("Boolean", fork="primitive")
     for data in [b"", b"\x02", b"\x00\x00"]:
         for operation in [boolean.load_ssz, boolean.hash_tree_root_from_ssz]:
             with pytest.raises(SSZError):
                 operation(data)
-    codec = get_type("SignedBeaconBlock", preset="minimal")
+    codec = get_type("SignedBeaconBlock", preset="minimal", fork="gloas")
     serialized = codec.default().to_ssz()
     for data in [
         serialized[:99],
@@ -112,9 +112,9 @@ def test_preset_specific_types():
     assert lengths == {"mainnet": 64, "minimal": 16, "gnosis": 32}
     for preset, size in [("minimal", 16), ("gnosis", 512)]:
         assert (
-            get_type("PayloadAttestation", preset=preset).schema["fields"]["aggregation_bits"][
-                "length"
-            ]
+            get_type("PayloadAttestation", preset=preset, fork="gloas").schema["fields"][
+                "aggregation_bits"
+            ]["length"]
             == size
         )
 
@@ -126,7 +126,7 @@ def test_bitfield_bounds():
         value["aggregation_bits"] = "0x" + bits.hex()
         with pytest.raises(SSZError):
             codec.load_json(json.dumps(value))
-    codec = get_type("PayloadAttestation", preset="minimal")
+    codec = get_type("PayloadAttestation", preset="minimal", fork="gloas")
     value = json.loads(codec.default().to_json())
     value["aggregation_bits"] = "0x000001"
     with pytest.raises(SSZError):
@@ -134,12 +134,12 @@ def test_bitfield_bounds():
 
 
 def test_names_and_independent_defaults():
-    for kwargs in [{"fork": "unknown"}, {"preset": "unknown"}]:
+    for kwargs in [{"fork": "unknown"}, {"fork": "gloas", "preset": "unknown"}]:
         with pytest.raises(ValueError):
             get_type("BeaconState", **kwargs)
     with pytest.raises(ValueError):
-        get_type("not_a_type")
-    codec = get_type("Checkpoint")
+        get_type("not_a_type", fork="gloas")
+    codec = get_type("Checkpoint", fork="gloas")
     assert codec.default().field("epoch") == 0
     schema = codec.schema
     schema["fields"].clear()
@@ -150,7 +150,7 @@ def test_names_and_independent_defaults():
 
 def test_concurrent_native_calls():
     def work(index):
-        codec = get_type("BeaconBlock", preset=PRESETS[index % len(PRESETS)])
+        codec = get_type("BeaconBlock", preset=PRESETS[index % len(PRESETS)], fork="gloas")
         document = json.loads(codec.default().to_json())
         document["slot"] = str(index)
         for _ in range(4):
@@ -165,8 +165,8 @@ def test_concurrent_native_calls():
 
 def test_progressive_gloas_schemas():
     assert get_type("BeaconState", fork="gloas").schema["progressive"]
-    assert get_type("ExecutionRequests").schema["fields"]["deposits"]["progressive"]
-    gloas = get_type("Attestation", preset="minimal")
+    assert get_type("ExecutionRequests", fork="gloas").schema["fields"]["deposits"]["progressive"]
+    gloas = get_type("Attestation", preset="minimal", fork="gloas")
     electra = get_type("Attestation", fork="electra", preset="minimal")
     assert gloas.default().to_ssz() == electra.default().to_ssz()
     assert gloas.default().hash_tree_root() != electra.default().hash_tree_root()
@@ -179,12 +179,12 @@ def test_progressive_gloas_schemas():
 
 
 def test_json_input_is_always_a_document():
-    codec = get_type("Uint64")
+    codec = get_type("Uint64", fork="primitive")
     assert codec.load_json('"001"').to_json() == b'"1"'
     for text in ["001", "-0", "+1"]:
         with pytest.raises(SSZError):
             codec.load_json(text)
-    byte = get_type("Bytes4")
+    byte = get_type("Bytes4", fork="primitive")
     assert byte.load_json('"0x01020304"').to_ssz() == b"\x01\x02\x03\x04"
     with pytest.raises(SSZError):
         byte.load_json("0x01020304")
@@ -222,7 +222,7 @@ def test_ssz_mutations_are_rejected_or_round_trip(fork):
 
 
 def test_object_conversion_api_is_removed():
-    codec = get_type("Checkpoint")
+    codec = get_type("Checkpoint", fork="gloas")
     for name in (
         "load_obj",
         "serialize",
@@ -241,7 +241,7 @@ def test_object_conversion_api_is_removed():
 
 @pytest.mark.parametrize("text,expected", [(b"true", b"\x01"), (b"false", b"\x00")])
 def test_json_boolean_literals(text, expected):
-    value = get_type("Boolean").load_json(text)
+    value = get_type("Boolean", fork="primitive").load_json(text)
     assert value.to_ssz() == expected
     assert value.to_json() == text
 
@@ -251,4 +251,16 @@ def test_json_boolean_literals(text, expected):
 )
 def test_json_booleans_reject_other_representations(text):
     with pytest.raises(SSZError):
-        get_type("Boolean").load_json(text)
+        get_type("Boolean", fork="primitive").load_json(text)
+
+
+def test_fork_must_be_explicit():
+    with pytest.raises(TypeError, match="fork"):
+        get_type("BeaconBlock")
+    with pytest.raises(TypeError, match="fork"):
+        get_type("Uint64")
+    with pytest.raises(TypeError, match="fork"):
+        list_types()
+    assert get_type("Uint64", fork="primitive").load_json('"1"').to_ssz() == (1).to_bytes(
+        8, "little"
+    )

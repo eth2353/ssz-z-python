@@ -84,15 +84,15 @@ def _check(fork: str, preset: str) -> None:
 
 
 @lru_cache(maxsize=12)
-def list_types(*, fork: str = "gloas", preset: str = "mainnet") -> tuple[str, ...]:
-    """List the canonical SSZ type names for a fork and preset."""
+def list_types(*, fork: str, preset: str = "mainnet") -> tuple[str, ...]:
+    """List canonical SSZ type names for an explicitly selected fork."""
     _check(fork, preset)
     return tuple(_JSON_DECODER.decode(call(preset, fork, "", Operation.LIST_TYPES)))
 
 
 @lru_cache(maxsize=4096)
-def get_type(name: str, *, fork: str = "gloas", preset: str = "mainnet") -> SSZType:
-    """Select a consensus type; primitive types are also available in every fork."""
+def get_type(name: str, *, fork: str, preset: str = "mainnet") -> SSZType:
+    """Select a type with an explicit fork; use fork="primitive" for primitives."""
     _check(fork, preset)
     namespace = fork
     if name not in list_types(fork=fork, preset=preset):
