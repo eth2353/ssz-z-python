@@ -10,6 +10,8 @@ import yaml
 
 from ssz_z import FORKS, get_type
 
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 ROOT = Path(os.environ.get("SSZ_SPEC_TESTS", "fixtures/tests"))
 BUNDLED = Path(__file__).parent / "vectors"
 CASES = sorted(
@@ -32,9 +34,9 @@ def test_official_ssz_static(path):
         pytest.skip("Fork outside the requested range")
     codec = get_type(name, fork=fork, preset=preset)
     serialized = snappy.decompress(path.read_bytes())
-    roots = yaml.load((path.parent / "roots.yaml").read_text(), Loader=yaml.CSafeLoader)
+    roots = yaml.load((path.parent / "roots.yaml").read_text(), Loader=YAML_LOADER)
     expected_root = bytes.fromhex(roots["root"][2:])
-    expected_value = yaml.load((path.parent / "value.yaml").read_text(), Loader=yaml.CSafeLoader)
+    expected_value = yaml.load((path.parent / "value.yaml").read_text(), Loader=YAML_LOADER)
     assert codec.hash_tree_root_from_ssz(serialized) == expected_root
     value = codec.deserialize(serialized)
     assert codec.serialize(value) == serialized

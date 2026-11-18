@@ -10,7 +10,7 @@ Verified locally on macOS arm64 against these pinned sources:
 ## Official SSZ static vectors
 
 All cases for Electra, Fulu, and Gloas were extracted from the official release
-archives and passed under Python 3.14.6:
+archives and passed under both Python 3.12.16 and Python 3.15.2:
 
 | Preset | Distinct cases |
 | --- | ---: |
@@ -59,9 +59,9 @@ local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
 - Built a source distribution and then built a wheel from that distribution.
 - Source distribution contains native source and no prebuilt native binaries.
 - Wheel contains all three preset libraries and has no runtime dependencies.
-- Clean Python 3.10.20 installation of the wheel passed round-trip and root
-  checks for all 1,368 canonical fork/preset codecs, including all three
-  SSZ-backed loaders, JSON output, and immutable buffer lifetimes (version 0.2.0).
+- Clean Python 3.12.16 and Python 3.15.2 installations of the wheel passed SSZ
+  round-trip and root checks for all 1,368 canonical fork/preset codecs.
+- Wheel metadata requires Python 3.12 or newer.
 - Wheel tag: `py3-none-macosx_11_0_arm64`; native deployment target is macOS 11.0.
 - Schema regeneration reproduces the committed generated source exactly.
 - Ruff lint/format and Zig formatting checks passed.
@@ -70,4 +70,5 @@ Native ABI version is 1; Python and the three native libraries must be upgraded
 together. See [the sampled performance report](performance/report.md) for the
 separate, limited timing comparison. No full benchmark was run for this change.
 
-Linux and Windows CI jobs are configured but were not executed on this host.
+CI tests and builds on Linux with Python 3.12 and Python 3.15. These local checks
+ran on macOS arm64; the GitHub Actions workflow was not executed on this host.

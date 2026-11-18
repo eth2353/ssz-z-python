@@ -16,7 +16,7 @@ are recorded in [vendor/UPSTREAM.json](vendor/UPSTREAM.json).
 python -m pip install .
 ```
 
-Python 3.10 or newer is required. Source builds install Zig **0.16.0** through the
+Python 3.12 or newer is required. Source builds install Zig **0.16.0** through the
 `ziglang` build dependency and compile three shared libraries in `ReleaseSafe`
 mode with a baseline CPU target. No system Zig installation, Node.js, Rust, or
 network access from Zig is required. Vendored source includes the SSZ engine,
@@ -33,6 +33,8 @@ For development:
 python -m pip install -e '.[test]'
 python -m pytest
 ```
+
+CI tests and builds the package on Linux with Python 3.12 and 3.15.
 
 ## Use
 

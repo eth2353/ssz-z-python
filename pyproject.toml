@@ -7,7 +7,7 @@ name = "ssz-z-python"
 version = "0.2.0"
 description = "Native Python bindings to Lodestar-Z SSZ consensus types"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE", "vendor/*/LICENSE*"]
 authors = [{name = "ssz-z-python contributors"}]
