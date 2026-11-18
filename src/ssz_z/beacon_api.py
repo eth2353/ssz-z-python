@@ -244,6 +244,9 @@ class BlockResponse:
 
 
 def _metadata_value(key, value):
+    if key in {"execution_payload_blinded", "execution_payload_included"}:
+        if type(value) is not bool:
+            raise SSZError(f"Invalid {key} metadata: expected a JSON boolean")
     if key in {"execution_payload_value", "consensus_block_value"}:
         if isinstance(value, str) and value.isascii() and value.isdecimal() and len(value) <= 78:
             value = int(value)

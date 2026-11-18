@@ -62,6 +62,31 @@ def test_invalid_proposal_metadata(metadata):
         load_proposal_json(json.dumps({"data": {}, **metadata}), preset="minimal")
 
 
+@pytest.mark.parametrize(
+    "fork,flag", [("fulu", "execution_payload_blinded"), ("gloas", "execution_payload_included")]
+)
+@pytest.mark.parametrize(
+    "token", ["0", "1", "0.0", "1.0", '"true"', '"false"', "True", "False", "null"]
+)
+@pytest.mark.parametrize("header", ["true", "false"])
+def test_headers_cannot_repair_invalid_json_booleans(fork, flag, token, header):
+    text = f'{{"version":"{fork}","{flag}":{token},"data":{{}}}}'
+    with pytest.raises(SSZError):
+        load_proposal_json(
+            text, preset="minimal", headers={"eth-" + flag.replace("_", "-"): header}
+        )
+
+
+@pytest.mark.parametrize("value", ["True", "False", "TRUE", "FALSE", "1", "0", " true", "false "])
+def test_boolean_headers_require_lowercase_literals(value):
+    with pytest.raises(SSZError, match="Invalid.*header"):
+        load_proposal_ssz(
+            b"",
+            headers={"eth-consensus-version": "fulu", "eth-execution-payload-blinded": value},
+            preset="minimal",
+        )
+
+
 def test_response_rejects_duplicate_missing_and_conflicting_metadata():
     codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
     data = codec.dumps(codec.default())
