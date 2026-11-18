@@ -2,11 +2,13 @@
 
 import copy
 import hashlib
+import json
 import struct
 
 import pytest
 
 from ssz_z import PRESETS, SSZError, get_type, list_types
+from tests.json_helpers import json_document, json_value
 
 FORKS = ("electra", "fulu")
 NAMES = (
@@ -33,7 +35,7 @@ def merkleize(chunks, limit):
 
 
 def byte_vector_root(value):
-    chunks = [value[i : i + 32].ljust(32, b"\0") for i in range(0, len(value), 32)]
+    chunks = [value[i : i + 32].ljust(32, b"\x00") for i in range(0, len(value), 32)]
     return merkleize(chunks, len(chunks))
 
 
@@ -44,18 +46,16 @@ def composite_list_root(values, limit):
 
 def populated_block(fork, preset):
     codec = get_type("BeaconBlock", fork=fork, preset=preset)
-    value = codec.default()
-    value.update(slot=123, proposer_index=42, parent_root=b"\x11" * 32, state_root=b"\x22" * 32)
+    value = json.loads(codec.default().to_json())
+    value.update(slot=123, proposer_index=42, parent_root=b"\x11" * 32, state_root=b'"' * 32)
     body = value["body"]
-    body["graffiti"] = b"\x33" * 32
+    body["graffiti"] = b"3" * 32
     payload = body["execution_payload"]
     payload.update(block_number=17, extra_data=b"hello", transactions=[b"\x01\x02", b"\x03"])
-    payload["withdrawals"] = [
-        {"index": 1, "validator_index": 2, "address": b"\x44" * 20, "amount": 3},
-    ]
-    body["blob_kzg_commitments"] = [b"\x55" * 48]
+    payload["withdrawals"] = [{"index": 1, "validator_index": 2, "address": b"D" * 20, "amount": 3}]
+    body["blob_kzg_commitments"] = [b"U" * 48]
     body["execution_requests"]["withdrawals"] = [
-        {"source_address": b"\x66" * 20, "validator_pubkey": b"\x77" * 48, "amount": 8},
+        {"source_address": b"f" * 20, "validator_pubkey": b"w" * 48, "amount": 8}
     ]
     return value
 
@@ -63,6 +63,7 @@ def populated_block(fork, preset):
 @pytest.mark.parametrize("preset", PRESETS)
 @pytest.mark.parametrize("fork", FORKS)
 def test_beacon_api_types_and_blinded_roots(fork, preset):
+
     def codec(name):
         return get_type(name, fork=fork, preset=preset)
 
@@ -71,27 +72,38 @@ def test_beacon_api_types_and_blinded_roots(fork, preset):
     blinded = copy.deepcopy(full)
     payload = blinded["body"].pop("execution_payload")
     header = {
-        key: value for key, value in payload.items() if key not in {"transactions", "withdrawals"}
+        key: value for (key, value) in payload.items() if key not in {"transactions", "withdrawals"}
     }
-    header["transactions_root"] = codec("Transactions").hash_tree_root(payload["transactions"])
-    header["withdrawals_root"] = codec("Withdrawals").hash_tree_root(payload["withdrawals"])
+    header["transactions_root"] = (
+        codec("Transactions").load_json(json_document(payload["transactions"])).hash_tree_root()
+    )
+    header["withdrawals_root"] = (
+        codec("Withdrawals").load_json(json_document(payload["withdrawals"])).hash_tree_root()
+    )
     blinded["body"]["execution_payload_header"] = header
-    assert codec("ExecutionPayload").hash_tree_root(payload) == codec(
-        "ExecutionPayloadHeader"
-    ).hash_tree_root(header)
-    assert codec("BeaconBlockBody").hash_tree_root(full["body"]) == codec(
-        "BlindedBeaconBlockBody"
-    ).hash_tree_root(blinded["body"])
-    assert codec("BeaconBlock").hash_tree_root(full) == codec("BlindedBeaconBlock").hash_tree_root(
-        blinded
+    assert (
+        codec("ExecutionPayload").load_json(json_document(payload)).hash_tree_root()
+        == codec("ExecutionPayloadHeader").load_json(json_document(header)).hash_tree_root()
+    )
+    assert (
+        codec("BeaconBlockBody").load_json(json_document(full["body"])).hash_tree_root()
+        == codec("BlindedBeaconBlockBody")
+        .load_json(json_document(blinded["body"]))
+        .hash_tree_root()
+    )
+    assert (
+        codec("BeaconBlock").load_json(json_document(full)).hash_tree_root()
+        == codec("BlindedBeaconBlock").load_json(json_document(blinded)).hash_tree_root()
     )
     signature = b"\x88" * 96
     signed = {"message": full, "signature": signature}
     signed_blinded = {"message": blinded, "signature": signature}
-    assert codec("SignedBeaconBlock").hash_tree_root(signed) == codec(
-        "SignedBlindedBeaconBlock"
-    ).hash_tree_root(signed_blinded)
-
+    assert (
+        codec("SignedBeaconBlock").load_json(json_document(signed)).hash_tree_root()
+        == codec("SignedBlindedBeaconBlock")
+        .load_json(json_document(signed_blinded))
+        .hash_tree_root()
+    )
     proofs = [b"\x99" * 48] * (128 if fork == "fulu" else 1)
     blobs = [b"\xab" * 131072]
     contents = {"block": full, "kzg_proofs": proofs, "blobs": blobs}
@@ -105,11 +117,12 @@ def test_beacon_api_types_and_blinded_roots(fork, preset):
     }
     for name, value in values.items():
         current = codec(name)
-        encoded = current.serialize(value)
-        assert current.deserialize(encoded) == value
-        assert current.from_json(current.to_json(value)) == value
-        assert current.loads(current.dumps(value)) == value
-        assert current.hash_tree_root_from_ssz(encoded) == current.hash_tree_root(value)
+        encoded = current.load_json(json_document(value)).to_ssz()
+        assert json.loads(current.load_ssz(encoded).to_json()) == json_value(value)
+        assert (
+            current.hash_tree_root_from_ssz(encoded)
+            == current.load_json(json_document(value)).hash_tree_root()
+        )
     for name, block_name, block_value in [
         ("BeaconBlockContents", "BeaconBlock", full),
         ("SignedBeaconBlockContents", "SignedBeaconBlock", signed),
@@ -121,19 +134,21 @@ def test_beacon_api_types_and_blinded_roots(fork, preset):
         assert schema["blobs"]["limit"] == 4096
         expected = merkleize(
             [
-                codec(block_name).hash_tree_root(block_value),
+                codec(block_name).load_json(json_document(block_value)).hash_tree_root(),
                 composite_list_root(proofs, proof_limit),
                 composite_list_root(blobs, 4096),
             ],
             3,
         )
-        assert current.hash_tree_root(values[name]) == expected
-        encoded = current.serialize(values[name])
+        assert current.load_json(json_document(values[name])).hash_tree_root() == expected
+        encoded = current.load_json(json_document(values[name])).to_ssz()
         fixed = struct.pack(
             "<III",
             12,
-            12 + len(codec(block_name).serialize(block_value)),
-            12 + len(codec(block_name).serialize(block_value)) + len(proofs) * 48,
+            12 + len(codec(block_name).load_json(json_document(block_value)).to_ssz()),
+            12
+            + len(codec(block_name).load_json(json_document(block_value)).to_ssz())
+            + len(proofs) * 48,
         )
         assert encoded[:12] == fixed
 
@@ -142,19 +157,23 @@ def test_beacon_api_types_and_blinded_roots(fork, preset):
 def test_fulu_proof_limit_differs_from_electra(preset):
     proofs = [bytes(48)] * 4097
     fulu = get_type("BeaconBlockContents", fork="fulu", preset=preset)
-    value = fulu.default()
+    value = json.loads(fulu.default().to_json())
     value["kzg_proofs"] = proofs
-    assert fulu.deserialize(fulu.serialize(value)) == value
-    with pytest.raises(SSZError, match="invalid list length"):
-        get_type("BeaconBlockContents", fork="electra", preset=preset).serialize(value)
+    assert json.loads(
+        fulu.load_ssz(fulu.load_json(json_document(value)).to_ssz()).to_json()
+    ) == json_value(value)
+    with pytest.raises(SSZError, match="gtLimit"):
+        get_type("BeaconBlockContents", fork="electra", preset=preset).load_json(
+            json_document(value)
+        ).to_ssz()
 
 
 @pytest.mark.parametrize("fork", FORKS)
 def test_contents_require_contents_fields_and_blinded_payload_header(fork):
     codec = get_type("BeaconBlockContents", fork=fork, preset="minimal")
-    with pytest.raises(SSZError, match="missing fields"):
-        codec.serialize({"block": populated_block(fork, "minimal")})
-    with pytest.raises(SSZError, match="missing fields"):
-        get_type("BlindedBeaconBlock", fork=fork, preset="minimal").serialize(
-            populated_block(fork, "minimal")
-        )
+    with pytest.raises(SSZError, match="MissingField|UnknownField"):
+        codec.load_json(json_document({"block": populated_block(fork, "minimal")})).to_ssz()
+    with pytest.raises(SSZError, match="MissingField|UnknownField"):
+        get_type("BlindedBeaconBlock", fork=fork, preset="minimal").load_json(
+            json_document(populated_block(fork, "minimal"))
+        ).to_ssz()

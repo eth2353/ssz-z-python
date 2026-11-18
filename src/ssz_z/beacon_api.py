@@ -7,8 +7,9 @@ from functools import cached_property
 from types import MappingProxyType
 from typing import Any
 
+from ._json import decode_metadata
 from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
-from .types import _parse_json, get_type
+from .types import get_type
 from .value import NativeValue, _signature_bytes, input_bytes
 
 
@@ -298,7 +299,7 @@ def load_proposal_json(text, *, preset="mainnet", headers=None) -> BlockResponse
             raise SSZError("JSON input too large")
         text = text.encode("utf-8")
     text = input_bytes(text)
-    envelope = _parse_json(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
+    envelope = decode_metadata(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
     metadata = _response_metadata(envelope["metadata"], headers)
     codec = _proposal_codec(metadata, preset)
     value = codec.load_json(text[envelope["data_start"] : envelope["data_end"]])

@@ -5,7 +5,6 @@ import struct
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from ._json import decoder as _JSON_DECODER
 from ._native import MAX_INPUT_SIZE, Operation, SSZError
 
 if TYPE_CHECKING:
@@ -118,16 +117,14 @@ class _Layout:
             return bool(data[0])
         if self.kind in {"bytevector", "bytelist", "bitvector", "bitlist"}:
             return bytes(data)
-        raise TypeError(
-            "field() projects scalars/byte fields; use to_obj() for a full Python value"
-        )
+        raise TypeError("field() projects scalars/byte fields; use to_json() for the full value")
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class NativeValue:
     """Immutable, validated SSZ bytes with cached roots and block projections.
 
-    Obtain a value with SSZType.load_ssz/load_json/load_obj. Python manages its
+    Obtain a value with SSZType.load_ssz/load_json. Python manages its
     lifetime; returned bytes and derived values are independent of the source.
     """
 
@@ -157,14 +154,6 @@ class NativeValue:
     def to_json(self) -> bytes:
         """Encode consensus JSON directly in Zig, without Python materialization."""
         return self.codec._call(Operation.SSZ_TO_JSON, self._ssz)
-
-    def to_obj(self) -> Any:
-        """Materialize an independent Python dict/list/int/bytes value for editing."""
-        return self.codec.deserialize(self._ssz)
-
-    def to_json_value(self) -> Any:
-        """Materialize a JSON-compatible value; to_json() is the wire fast path."""
-        return _JSON_DECODER.decode(self.to_json())
 
     def hash_tree_root(self) -> bytes:
         root = self._root

@@ -1,11 +1,13 @@
 import hashlib
 import json
+import random
 import struct
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from ssz_z import FORKS, PRESETS, SSZError, get_type, list_types
+from ssz_z import FORKS, PRESETS, NativeValue, SSZError, get_type, list_types
+from tests.json_helpers import json_document
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -22,59 +24,55 @@ def test_requested_forks_and_presets(preset, fork):
         "BlockRoots",
         "StateRoots",
     } <= set(names)
-    legacy_names = {
+    for name in {
         "BlobKzgCommitments",
         "SignedBLSToExecutionChanges",
         "HistoricalBlockRoots",
         "HistoricalStateRoots",
         "PtcWindow",
-    }
-    assert not legacy_names.intersection(names)
-    for name in legacy_names:
+    }:
+        assert name not in names
         with pytest.raises(ValueError, match="Unknown SSZ type"):
             get_type(name, fork=fork, preset=preset)
     for name in names:
         codec = get_type(name, fork=fork, preset=preset)
         value = codec.default()
-        serialized = codec.serialize(value)
-        assert codec.deserialize(serialized) == value, name
-        assert codec.from_json(codec.to_json(value)) == value, name
-        assert codec.hash_tree_root(value) == codec.hash_tree_root_from_ssz(serialized), name
+        assert isinstance(value, NativeValue)
+        assert codec.load_ssz(value.to_ssz()) == value, name
+        assert codec.load_json(value.to_json()) == value, name
+        assert value.hash_tree_root() == codec.hash_tree_root_from_ssz(value.to_ssz()), name
 
 
 @pytest.mark.parametrize("bits", [8, 16, 32, 64, 128, 256])
 @pytest.mark.parametrize("preset", PRESETS)
 def test_unsigned_integers(bits, preset):
     codec = get_type(f"Uint{bits}", preset=preset)
-    for value in [0, 1, (1 << bits) - 1]:
-        encoded = value.to_bytes(bits // 8, "little")
-        assert codec.serialize(value) == encoded
-        assert codec.deserialize(encoded) == value
-        assert codec.hash_tree_root(value) == encoded.ljust(32, b"\0")
-        assert codec.from_json(json.dumps(str(value))) == value
-        assert codec.to_json(value) == str(value)
-    for value in [-1, 1 << bits, True, 1.0, "-1", "+1", " 1", "1_0"]:
+    for number in [0, 1, (1 << bits) - 1]:
+        encoded = number.to_bytes(bits // 8, "little")
+        value = codec.load_json(json.dumps(str(number)))
+        assert value.to_ssz() == encoded
+        assert value.to_json() == f'"{number}"'.encode()
+        assert value.hash_tree_root() == encoded.ljust(32, b"\0")
+        assert codec.load_ssz(encoded) == value
+    for invalid in [-1, 1 << bits, True, 1.0, "-1", "+1", " 1", "1_0"]:
         with pytest.raises(SSZError):
-            codec.serialize(value)
+            codec.load_json(json.dumps(invalid))
 
 
 def test_known_checkpoint_root_and_unordered_json():
     codec = get_type("Checkpoint")
     root = b"\x12" * 32
-    value = {"root": root, "epoch": 123}
-    expected = hashlib.sha256((123).to_bytes(32, "little") + root).digest()
-    assert codec.hash_tree_root(value) == expected
-    assert codec.loads('{"root":"0x' + root.hex() + '","epoch":"123"}') == value
-    assert json.loads(codec.dumps(value)) == {"epoch": "123", "root": "0x" + root.hex()}
+    value = codec.load_json('{"root":"0x' + root.hex() + '","epoch":"123"}')
+    assert value.hash_tree_root() == hashlib.sha256((123).to_bytes(32, "little") + root).digest()
+    assert json.loads(value.to_json()) == {"epoch": "123", "root": "0x" + root.hex()}
 
 
 @pytest.mark.parametrize(
-    "value",
-    [{}, {"epoch": 0, "root": b"\0" * 32, "extra": 0}, {"epoch": 0, "root": b"short"}, None],
+    "value", [{}, {"epoch": 0, "root": bytes(32), "extra": 0}, {"epoch": 0, "root": b"short"}, None]
 )
 def test_bad_container(value):
     with pytest.raises(SSZError):
-        get_type("Checkpoint").serialize(value)
+        get_type("Checkpoint").load_json(json_document(value))
 
 
 @pytest.mark.parametrize(
@@ -82,61 +80,57 @@ def test_bad_container(value):
 )
 def test_bad_json(text):
     with pytest.raises(SSZError):
-        get_type("Checkpoint").from_json(text)
+        get_type("Checkpoint").load_json(text)
 
 
 def test_invalid_binary_inputs():
     boolean = get_type("Boolean")
     for data in [b"", b"\x02", b"\x00\x00"]:
-        for operation in [boolean.deserialize, boolean.hash_tree_root_from_ssz]:
+        for operation in [boolean.load_ssz, boolean.hash_tree_root_from_ssz]:
             with pytest.raises(SSZError):
                 operation(data)
     codec = get_type("SignedBeaconBlock", preset="minimal")
-    serialized = codec.serialize(codec.default())
-    invalid = [
+    serialized = codec.default().to_ssz()
+    for data in [
         serialized[:99],
-        b"\0" * len(serialized),
+        bytes(len(serialized)),
         struct.pack("<I", 99) + serialized[4:],
         struct.pack("<I", len(serialized) + 1) + serialized[4:],
-    ]
-    for data in invalid:
-        for operation in [codec.deserialize, codec.hash_tree_root_from_ssz]:
+    ]:
+        for operation in [codec.load_ssz, codec.hash_tree_root_from_ssz]:
             with pytest.raises(SSZError):
                 operation(data)
 
 
 def test_preset_specific_types():
-    lengths = {}
-    for preset in PRESETS:
-        codec = get_type("BeaconState", fork="fulu", preset=preset)
-        lengths[preset] = len(codec.default()["proposer_lookahead"])
+    lengths = {
+        p: get_type("BeaconState", fork="fulu", preset=p).schema["fields"]["proposer_lookahead"][
+            "length"
+        ]
+        for p in PRESETS
+    }
     assert lengths == {"mainnet": 64, "minimal": 16, "gnosis": 32}
-    assert (
-        get_type("PayloadAttestation", preset="minimal").schema["fields"]["aggregation_bits"][
-            "length"
-        ]
-        == 16
-    )
-    assert (
-        get_type("PayloadAttestation", preset="gnosis").schema["fields"]["aggregation_bits"][
-            "length"
-        ]
-        == 512
-    )
+    for preset, size in [("minimal", 16), ("gnosis", 512)]:
+        assert (
+            get_type("PayloadAttestation", preset=preset).schema["fields"]["aggregation_bits"][
+                "length"
+            ]
+            == size
+        )
 
 
 def test_bitfield_bounds():
     codec = get_type("Attestation", fork="electra", preset="minimal")
-    value = codec.default()
-    for bits in [b"", b"\0", b"\x01\0", b"\0" * 1025 + b"\x01"]:
-        value["aggregation_bits"] = bits
+    value = json.loads(codec.default().to_json())
+    for bits in [b"", b"\0", b"\x01\0", bytes(1025) + b"\x01"]:
+        value["aggregation_bits"] = "0x" + bits.hex()
         with pytest.raises(SSZError):
-            codec.serialize(value)
-    payload = get_type("PayloadAttestation", preset="minimal")
-    value = payload.default()
-    value["aggregation_bits"] = b"\x00\x00\x01"
+            codec.load_json(json.dumps(value))
+    codec = get_type("PayloadAttestation", preset="minimal")
+    value = json.loads(codec.default().to_json())
+    value["aggregation_bits"] = "0x000001"
     with pytest.raises(SSZError):
-        payload.serialize(value)
+        codec.load_json(json.dumps(value))
 
 
 def test_names_and_independent_defaults():
@@ -146,25 +140,24 @@ def test_names_and_independent_defaults():
     with pytest.raises(ValueError):
         get_type("not_a_type")
     codec = get_type("Checkpoint")
-    value = codec.default()
-    value["epoch"] = 1
-    assert codec.default()["epoch"] == 0
+    assert codec.default().field("epoch") == 0
     schema = codec.schema
     schema["fields"].clear()
     assert codec.schema["fields"]
     with pytest.raises(TypeError):
-        codec.deserialize(16)
+        codec.load_ssz(16)
 
 
 def test_concurrent_native_calls():
     def work(index):
-        preset = PRESETS[index % len(PRESETS)]
-        codec = get_type("BeaconBlock", preset=preset)
-        value = codec.default()
-        value["slot"] = index
+        codec = get_type("BeaconBlock", preset=PRESETS[index % len(PRESETS)])
+        document = json.loads(codec.default().to_json())
+        document["slot"] = str(index)
         for _ in range(4):
-            assert codec.deserialize(codec.serialize(value)) == value
-            assert len(codec.hash_tree_root(value)) == 32
+            value = codec.load_json(json.dumps(document))
+            assert codec.load_ssz(value.to_ssz()) == value
+            assert value.field("slot") == index
+            assert len(value.hash_tree_root()) == 32
 
     with ThreadPoolExecutor(max_workers=6) as pool:
         list(pool.map(work, range(36)))
@@ -175,48 +168,87 @@ def test_progressive_gloas_schemas():
     assert get_type("ExecutionRequests").schema["fields"]["deposits"]["progressive"]
     gloas = get_type("Attestation", preset="minimal")
     electra = get_type("Attestation", fork="electra", preset="minimal")
-    value = gloas.default()
-    assert gloas.serialize(value) == electra.serialize(value)
-    assert gloas.hash_tree_root(value) != electra.hash_tree_root(value)
-    value["aggregation_bits"] = b"\0" * 1025 + b"\x01"
-    assert gloas.deserialize(gloas.serialize(value)) == value
+    assert gloas.default().to_ssz() == electra.default().to_ssz()
+    assert gloas.default().hash_tree_root() != electra.default().hash_tree_root()
+    document = json.loads(gloas.default().to_json())
+    document["aggregation_bits"] = "0x" + (bytes(1025) + b"\x01").hex()
+    encoded = json.dumps(document)
+    assert json.loads(gloas.load_json(encoded).to_json()) == document
     with pytest.raises(SSZError):
-        electra.serialize(value)
+        electra.load_json(encoded)
 
 
-def test_scalar_json_documents():
+def test_json_input_is_always_a_document():
     codec = get_type("Uint64")
-    assert codec.from_json("001") == 1
-    assert codec.loads('"001"') == 1
-    with pytest.raises(SSZError):
-        codec.loads("001")
+    assert codec.load_json('"001"').to_json() == b'"1"'
+    for text in ["001", "-0", "+1"]:
+        with pytest.raises(SSZError):
+            codec.load_json(text)
     byte = get_type("Bytes4")
-    assert byte.from_json("0x01020304") == b"\x01\x02\x03\x04"
-    assert byte.loads('"0x01020304"') == b"\x01\x02\x03\x04"
+    assert byte.load_json('"0x01020304"').to_ssz() == b"\x01\x02\x03\x04"
     with pytest.raises(SSZError):
-        byte.loads("0x01020304")
+        byte.load_json("0x01020304")
+    for value in [1, True, {}, [], None]:
+        with pytest.raises(TypeError):
+            codec.load_json(value)
+    for text in ['"123"', b'"123"', bytearray(b'"123"'), memoryview(b'"123"')]:
+        value = codec.load_json(text)
+        assert isinstance(value.to_json(), bytes)
+        assert isinstance(value.to_ssz(), bytes)
+        assert value.to_ssz() == (123).to_bytes(8, "little")
 
 
 @pytest.mark.parametrize("fork", FORKS)
 def test_ssz_mutations_are_rejected_or_round_trip(fork):
-    import random
-
     codec = get_type("SignedBeaconBlock", fork=fork, preset="minimal")
-    original = codec.serialize(codec.default())
+    original = codec.default().to_ssz()
     random_source = random.Random(20261016)
     for _ in range(100):
         candidate = bytearray(original)
         for _ in range(random_source.randrange(1, 5)):
-            index = random_source.randrange(len(candidate))
-            candidate[index] = random_source.randrange(256)
+            candidate[random_source.randrange(len(candidate))] = random_source.randrange(256)
         if random_source.randrange(2):
             candidate = candidate[: random_source.randrange(len(candidate))]
         data = bytes(candidate)
         try:
-            value = codec.deserialize(data)
+            value = codec.load_ssz(data)
         except SSZError:
             with pytest.raises(SSZError):
                 codec.hash_tree_root_from_ssz(data)
         else:
-            assert codec.serialize(value) == data
-            assert codec.hash_tree_root(value) == codec.hash_tree_root_from_ssz(data)
+            assert value.to_ssz() == data
+            assert codec.load_json(value.to_json()).to_ssz() == data
+            assert value.hash_tree_root() == codec.hash_tree_root_from_ssz(data)
+
+
+def test_object_conversion_api_is_removed():
+    codec = get_type("Checkpoint")
+    for name in (
+        "load_obj",
+        "serialize",
+        "deserialize",
+        "from_json",
+        "to_json",
+        "loads",
+        "dumps",
+        "hash_tree_root",
+    ):
+        assert not hasattr(codec, name)
+    value = codec.default()
+    for name in ("to_obj", "to_json_value"):
+        assert not hasattr(value, name)
+
+
+@pytest.mark.parametrize("text,expected", [(b"true", b"\x01"), (b"false", b"\x00")])
+def test_json_boolean_literals(text, expected):
+    value = get_type("Boolean").load_json(text)
+    assert value.to_ssz() == expected
+    assert value.to_json() == text
+
+
+@pytest.mark.parametrize(
+    "text", [b'"true"', b'"false"', b"True", b"False", b"TRUE", b"FALSE", b"1", b"0", b"null"]
+)
+def test_json_booleans_reject_other_representations(text):
+    with pytest.raises(SSZError):
+        get_type("Boolean").load_json(text)

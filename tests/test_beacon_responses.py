@@ -4,6 +4,7 @@ import pytest
 
 from ssz_z import PRESETS, SSZError, get_type
 from ssz_z.beacon_api import load_proposal_json, load_proposal_ssz
+from tests.json_helpers import json_document, json_value
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -12,7 +13,7 @@ from ssz_z.beacon_api import load_proposal_json, load_proposal_ssz
 def test_metadata_selects_proposal_codec(fork, preset, blinded):
     name = "BlindedBeaconBlock" if blinded else "BeaconBlockContents"
     codec = get_type(name, fork=fork, preset=preset)
-    value = codec.default()
+    value = json.loads(codec.default().to_json())
     metadata = {
         "version": fork,
         "execution_payload_blinded": blinded,
@@ -20,13 +21,10 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
         "consensus_block_value": "34",
         "extra": {"nested": ["é"]},
     }
-    # Metadata after data and non-ASCII text exercise native byte ranges.
-    text = json.dumps(
-        {"extra": metadata["extra"], "data": codec.to_json(value), **metadata}, ensure_ascii=False
-    )
+    text = json_document({"extra": metadata["extra"], "data": json_value(value), **metadata})
     response = load_proposal_json(text, preset=preset)
     assert response.value.codec == codec
-    assert response.value.to_ssz() == codec.serialize(value)
+    assert response.value.to_ssz() == codec.load_json(json_document(value)).to_ssz()
     assert response.proposal.slot == 0
     assert response.metadata["execution_payload_value"] == 12
     assert response.metadata["extra"]["nested"] == ("é",)
@@ -40,7 +38,9 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
         "Eth-Execution-Payload-Value": "12",
         "Eth-Consensus-Block-Value": "34",
     }
-    binary = load_proposal_ssz(codec.serialize(value), headers=headers, preset=preset)
+    binary = load_proposal_ssz(
+        codec.load_json(json_document(value)).to_ssz(), headers=headers, preset=preset
+    )
     assert binary.value.to_ssz() == response.value.to_ssz()
     assert binary.metadata["consensus_block_value"] == 34
     assert load_proposal_json(text, headers=headers, preset=preset).value.codec == codec
@@ -59,7 +59,7 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
 )
 def test_invalid_proposal_metadata(metadata):
     with pytest.raises(SSZError):
-        load_proposal_json(json.dumps({"data": {}, **metadata}), preset="minimal")
+        load_proposal_json(json_document({"data": {}, **metadata}), preset="minimal")
 
 
 @pytest.mark.parametrize(
@@ -89,7 +89,7 @@ def test_boolean_headers_require_lowercase_literals(value):
 
 def test_response_rejects_duplicate_missing_and_conflicting_metadata():
     codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
-    data = codec.dumps(codec.default())
+    data = json_document(json.loads(codec.default().to_json()))
     good = '{"version":"fulu","execution_payload_blinded":false,"data":' + data + "}"
     for text in (
         good[:-1] + ',"ver\\u0073ion":"electra"}',
@@ -109,16 +109,19 @@ def test_blob_data_is_not_materialized_by_python_metadata_parser(monkeypatch):
     from ssz_z import beacon_api
 
     codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
-    value = codec.default()
+    value = json.loads(codec.default().to_json())
     value["blobs"] = [bytes(131072)]
-    text = json.dumps(
-        {"data": codec.to_json(value), "version": "fulu", "execution_payload_blinded": False}
+    text = json_document(
+        {"data": json_value(value), "version": "fulu", "execution_payload_blinded": False}
     )
-    original = beacon_api._parse_json
+    original = beacon_api.decode_metadata
 
     def metadata_only(raw):
         assert len(raw) < 300
         return original(raw)
 
-    monkeypatch.setattr(beacon_api, "_parse_json", metadata_only)
-    assert load_proposal_json(text, preset="minimal").value.to_ssz() == codec.serialize(value)
+    monkeypatch.setattr(beacon_api, "decode_metadata", metadata_only)
+    assert (
+        load_proposal_json(text, preset="minimal").value.to_ssz()
+        == codec.load_json(json_document(value)).to_ssz()
+    )

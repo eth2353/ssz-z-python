@@ -53,7 +53,7 @@ checked for equivalent publication bytes, JSON values, headers and roots outside
 the timed callbacks. JSON decoding remains slower than spy-ssz in these samples
 (1.84x on mainnet, 1.70x on Hoodi, 1.36x on Gloas).
 
-The dictionary API still materializes Python trees. A separate 25-cycle profile
+The former dictionary API materialized Python trees. A separate 25-cycle profile
 of `from_json -> serialize -> deserialize -> to_json` on one mainnet block
 dropped from 0.626 s / 150 native operations to 0.161 s / 50 operations.
 See [baseline-profile.txt](baseline-profile.txt) and
@@ -94,22 +94,22 @@ documented in
 
 [benchmark.py](benchmark.py) accepts the saved corpus and an isolated installation
 of the exact old spy-ssz pin. It never imports Vero or changes either checkout.
-Install `msgspec` alongside the bindings and point `--spy-site-packages` at the
+The bindings install `msgspec`; point `--spy-site-packages` at the
 preserved old build. For a similarly limited pilot:
 
 ```sh
 PYTHONPATH=src /path/to/python performance/benchmark.py \
   --corpus /path/to/real-blocks \
   --spy-site-packages /path/to/pinned-spy/site-packages \
-  --output /tmp/ssz-z-pilot --mode fast --limit 8 --rounds 1
+  --output /tmp/ssz-z-pilot --limit 8 --rounds 1
 ```
 
 Inputs are loaded into RAM and SHA-256 checked before timing. The harness warms
 up at most 12 blocks per network (8 in this pilot), alternates library order by
 block/pass, disables garbage collection during the measured loop, and checks
 outputs outside individual timers. It saves raw samples, aggregate statistics,
-interpreter/platform metadata, source hashes and native library hashes. `--mode
-dict` exercises the convenience API instead. The committed pilot summary retains
+interpreter/platform metadata, source hashes and native library hashes. The harness now exercises only the wire API; the dictionary profile above is
+historical and describes an API that has since been removed. The committed pilot summary retains
 the metadata available at the time; later harness additions record more hashes.
 
 The full correctness suite passed **24,247 tests**, including 24,064 distinct

@@ -25,7 +25,6 @@ parser.add_argument("--spy-site-packages", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=3)
 parser.add_argument("--limit", type=int, default=0)
-parser.add_argument("--mode", choices=("fast", "dict"), default="fast")
 args = parser.parse_args()
 sys.path.append(str(args.spy_site_packages))
 
@@ -37,11 +36,6 @@ from spy_ssz import ObjectKind, get_ssz_type
 
 from ssz_z import get_type
 from ssz_z.beacon_api import BlockValue
-
-
-class Response(msgspec.Struct):
-    data: msgspec.Raw
-
 
 METRICS = (
     "json_decode",
@@ -60,7 +54,7 @@ metadata = {
     "corpus": str(args.corpus),
     "rounds": args.rounds,
     "limit": args.limit,
-    "mode": args.mode,
+    "mode": "native",
     "timer": "perf_counter_ns",
     "method": "Sequential, interleaved old/new; alternate order by block and round; "
     "12 warmup blocks/network; inputs in RAM; GC disabled; validation outside timers.",
@@ -150,7 +144,7 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
             if fork != "gloas":
                 value = {"block": value, "kzg_proofs": [], "blobs": []}
             production_json = msgspec.json.encode({"data": value})
-            production_ssz = new_proposal.serialize(value)
+            production_ssz = new_proposal.load_json(msgspec.json.encode(value)).to_ssz()
             signature = signed_value["signature"]
             output = {}
             elapsed = {}
@@ -176,47 +170,16 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                         return header, root, encoded
                     finally:
                         obj.close()
-                if args.mode == "fast":
-                    obj = (
-                        new_proposal.load_json(production_json, wrapped=True)
-                        if wire == "json"
-                        else new_proposal.load_ssz(production_ssz)
-                    )
-                    obj = BlockValue(obj)
-                    header = obj.header_dict()
-                    signed = obj.sign(signature).value
-                    encoded = signed.to_json() if wire == "json" else signed.to_ssz()
-                    return header, "0x" + obj.block_hash_tree_root().hex(), encoded
-                decoded = (
-                    new_proposal.from_json(
-                        bytes(msgspec.json.decode(production_json, type=Response).data)
-                    )
+                obj = (
+                    new_proposal.load_json(production_json, wrapped=True)
                     if wire == "json"
-                    else new_proposal.deserialize(production_ssz)
+                    else new_proposal.load_ssz(production_ssz)
                 )
-                block = decoded if fork == "gloas" else decoded["block"]
-                block_type = get_type("BeaconBlock", fork=fork)
-                body_type = get_type("BeaconBlockBody", fork=fork)
-                header_value = {key: v for key, v in block.items() if key != "body"}
-                header_value["body_root"] = body_type.hash_tree_root(block["body"])
-                header = get_type("BeaconBlockHeader", fork=fork).to_json(header_value)
-                signed_value = {"message": block, "signature": signature}
-                signed_name = "SignedBeaconBlock"
-                if fork != "gloas":
-                    signed_value = {
-                        "signed_block": signed_value,
-                        "kzg_proofs": decoded["kzg_proofs"],
-                        "blobs": decoded["blobs"],
-                    }
-                    signed_name = "SignedBeaconBlockContents"
-                signed_codec = get_type(signed_name, fork=fork)
-                signed = signed_codec.from_json(signed_value)
-                encoded = (
-                    msgspec.json.encode(signed_codec.to_json(signed))
-                    if wire == "json"
-                    else signed_codec.serialize(signed)
-                )
-                return header, "0x" + block_type.hash_tree_root(block).hex(), encoded
+                obj = BlockValue(obj)
+                header = obj.header_dict()
+                signed = obj.sign(signature).value
+                encoded = signed.to_json() if wire == "json" else signed.to_ssz()
+                return header, "0x" + obj.block_hash_tree_root().hex(), encoded
 
             def old_ssz_root():
                 with old.from_ssz(ssz_input) as obj:
@@ -238,30 +201,14 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                         obj.close()
                     direct_root = timed(lib, "ssz_to_root", old_ssz_root)
                 else:
-                    if args.mode == "fast":
-                        obj = timed(
-                            lib, "json_decode", lambda: native.load_json(json_input, wrapped=True)
-                        )
-                        json_output = timed(lib, "json_encode", obj.to_json)
-                        assert obj.to_ssz() == ssz_input
-                        obj = timed(lib, "ssz_decode", lambda: native.load_ssz(ssz_input))
-                        assert timed(lib, "ssz_encode", obj.to_ssz) == ssz_input
-                        root = timed(lib, "object_to_root", obj.hash_tree_root)
-                    else:
-                        obj = timed(
-                            lib,
-                            "json_decode",
-                            lambda: native.from_json(
-                                bytes(msgspec.json.decode(json_input, type=Response).data)
-                            ),
-                        )
-                        json_output = timed(
-                            lib, "json_encode", lambda: msgspec.json.encode(native.to_json(obj))
-                        )
-                        assert native.serialize(obj) == ssz_input
-                        obj = timed(lib, "ssz_decode", lambda: native.deserialize(ssz_input))
-                        assert timed(lib, "ssz_encode", lambda: native.serialize(obj)) == ssz_input
-                        root = timed(lib, "object_to_root", lambda: native.hash_tree_root(obj))
+                    obj = timed(
+                        lib, "json_decode", lambda: native.load_json(json_input, wrapped=True)
+                    )
+                    json_output = timed(lib, "json_encode", obj.to_json)
+                    assert obj.to_ssz() == ssz_input
+                    obj = timed(lib, "ssz_decode", lambda: native.load_ssz(ssz_input))
+                    assert timed(lib, "ssz_encode", obj.to_ssz) == ssz_input
+                    root = timed(lib, "object_to_root", obj.hash_tree_root)
                     direct_root = timed(
                         lib, "ssz_to_root", lambda: native.hash_tree_root_from_ssz(ssz_input)
                     )

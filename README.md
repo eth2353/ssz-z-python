@@ -58,24 +58,27 @@ It also builds an sdist and wheel with `uv build` and tests the installed wheel.
 ```python
 from ssz_z import get_type
 
-block = get_type("SignedBeaconBlock", fork="gloas", preset="mainnet")
-
-# Python values are dictionaries, lists, integers, bytes, and booleans.
-value = block.default()
-value["message"]["slot"] = 123
-
-serialized = block.serialize(value)                 # bytes
-restored = block.deserialize(serialized)            # dict
-root = block.hash_tree_root(value)                  # 32 bytes
+codec = get_type("SignedBeaconBlock", fork="gloas", preset="mainnet")
+value = codec.default()                            # NativeValue
+serialized = value.to_ssz()                       # bytes
+restored = codec.load_ssz(serialized)              # NativeValue
+root = value.hash_tree_root()                     # 32 bytes
 assert restored == value
-assert block.hash_tree_root_from_ssz(serialized) == root
+assert codec.hash_tree_root_from_ssz(serialized) == root
 
-json_value = block.to_json(value)                   # JSON-compatible dict
-json_text = block.dumps(value)                      # JSON text
-assert json_value["message"]["slot"] == "123"
-assert block.from_json(json_value) == value
-assert block.loads(json_text) == value
+json_bytes = value.to_json()                      # UTF-8 wire bytes
+assert codec.load_json(json_bytes) == value
 ```
+
+`load_ssz` accepts SSZ bytes; `load_json` accepts a complete JSON document as
+UTF-8 bytes or text. Both return an immutable `NativeValue`. `to_ssz()` and
+`to_json()` always return bytes. Pass JSON bytes directly to your HTTP client;
+do not JSON-encode them again.
+
+There are no dictionary serialization or object conversion APIs. If your caller
+already holds a decoded JSON value, encode it with its JSON library before
+calling `load_json`. The former ambiguous `from_json` API is replaced by
+`load_json(document)`; no alias accepts both documents and decoded values.
 
 Select any exported upstream type by its case-sensitive name:
 
@@ -92,33 +95,26 @@ print(attestation.schema)      # metadata reflected from the actual Zig type
 
 Defaults are `fork="gloas"`, `preset="mainnet"`. `list_types` includes inherited
 consensus types; primitive types have their own `fork="primitive"` namespace and
-are also resolved by `get_type` from every fork. Use `serialize`/`deserialize`
-for SSZ bytes and `dumps`/`loads` for JSON text.
+are also resolved by `get_type` from every fork.
 
-| SSZ value | Python representation | Consensus JSON |
-| --- | --- | --- |
-| Container | `dict`, with snake_case field names | Object |
-| Uint | Arbitrary precision `int` | Decimal string |
-| Boolean | `bool` | Boolean |
-| Byte vector/list | `bytes` | `0x`-prefixed hex |
-| Bitvector | Packed `bytes`, least significant bit first | `0x`-prefixed hex |
-| Bitlist | Packed `bytes`, **including the SSZ delimiter bit** | `0x`-prefixed hex |
-| Other vector/list | `list` | Array |
+Consensus JSON uses decimal strings for uints, booleans for boolean fields,
+`0x`-prefixed hex for byte/bit fields, arrays for other collections, and objects
+for containers. Bitlists include the SSZ delimiter bit. Scalar inputs must also
+be complete JSON documents: use `load_json('"0x01020304"')` for `Bytes4`, not an
+unquoted hex string. JSON booleans must be the lowercase literals `true`/`false`;
+quoted strings, numbers, and uppercase variants are invalid.
 
-`from_json` accepts a decoded JSON value or JSON text. Decimal strings and hex
-strings are also accepted directly for scalar types. Serialization accepts both
-the Python and consensus JSON representations. Input field order is irrelevant;
-output follows schema order. Missing/unknown fields, duplicate JSON keys,
-out-of-range integers, invalid lengths, noncanonical bitfields, and malformed SSZ
-raise `ssz_z.SSZError` (a `ValueError` subclass). Unknown type/fork/preset names
-raise `ValueError`. Progressive collections have no SSZ length limit; the binding caps inputs and
-serialized outputs at 512 MiB.
+Input field order is irrelevant; output follows schema order. Missing/unknown
+fields, duplicate JSON keys, out-of-range integers, invalid lengths,
+noncanonical bitfields, and malformed SSZ raise `ssz_z.SSZError` (a `ValueError`
+subclass). Unknown type/fork/preset names raise `ValueError`. Progressive
+collections have no SSZ length limit; the binding caps inputs and serialized
+outputs at 512 MiB.
 
-## Fast path for blocks and other immutable values
+## Immutable values and block helpers
 
-`load_ssz`, `load_json`, and `load_obj` return an immutable `NativeValue` instead
-of materializing a Python tree. Dictionary APIs are useful for editing small
-objects.
+Values retain validated SSZ bytes without materializing a Python tree.
+Block/proposal adapters preserve header, field, root, and signing conveniences.
 
 ```python
 from ssz_z.beacon_api import BlockValue
@@ -171,12 +167,12 @@ Gloas `BlockValue` instances also expose `.builder_index`; generic values use `f
 Values are frozen Python objects containing immutable SSZ bytes. Python manages
 their lifetime, just like any other bytes object. Values can be shared between
 threads; native calls release the GIL and own independent arenas. No foreign
-pointers outlive a call. `to_obj()` creates an independent editable Python tree,
-while `to_json_value()` creates a JSON-compatible tree. Construct a replacement
-with `codec.load_obj(edited_value)` after editing.
+pointers outlive a call. To construct a replacement, pass a new complete JSON document or SSZ bytes
+to the codec. Headers, scalar field projections, schema metadata, and response
+metadata remain available as convenience helpers.
 
 See [performance/report.md](performance/report.md) for the sampled real-block
-comparison, reproduction commands, and remaining JSON/dictionary costs.
+comparison and reproduction commands.
 
 ## Beacon API block production and publishing
 
@@ -186,9 +182,9 @@ for every preset. These use the current Beacon API wire fields:
 
 ```python
 contents = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
-value = contents.default()  # {"block": ..., "kzg_proofs": [], "blobs": []}
-encoded = contents.serialize(value)
-assert contents.deserialize(encoded) == value
+value = contents.default()  # NativeValue containing block, kzg_proofs, and blobs
+encoded = value.to_ssz()
+assert contents.load_ssz(encoded) == value
 ```
 
 Signed contents use `signed_block` instead of `block`. Blinded bodies replace
@@ -308,9 +304,8 @@ source by default, or accepts `--lodestar-root /path/to/lodestar`.
 Python uses `ctypes` to call a small C ABI. SSZ encoding, validation, decoding,
 and Merkleization run in Lodestar-Z. The fast path retains validated SSZ bytes
 and uses schema-directed native JSON parsing/formatting with bulk hex conversion.
-The dictionary API normalizes JSON values in Python; SSZ serialization of those
-values crosses through JSON once. JSON-only dictionary conversions no longer
-round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
+JSON documents are parsed and validated in Zig; full value trees never cross
+the Python/native boundary. `hash_tree_root_from_ssz` and block projections hash
 serialized bytes directly. Native calls release the GIL and use independent
 per-call arenas; dynamically returned buffers are copied into Python and freed
 before returning. The native writer transfers ownership of its output buffer
