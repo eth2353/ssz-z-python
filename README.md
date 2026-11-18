@@ -50,7 +50,7 @@ keep `uv.lock` current, check GitHub Actions with zizmor, and format Zig with
 the build's pinned Zig version. Official test vectors are excluded to preserve
 the upstream files.
 
-CI tests on Linux and macOS with Python 3.12 and 3.15 using locked uv environments.
+CI tests on Linux AMD64 and ARM64 with Python 3.12 and 3.15 using locked uv environments.
 It also builds an sdist and wheel with `uv build` and tests the installed wheel.
 
 ## Use
