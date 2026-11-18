@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "ziglang==0.16.0"]
+requires = ["setuptools>=77", "ziglang==0.16.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -33,7 +33,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-ssz_z = ["py.typed", "_native/*"]
+ssz_z = ["py.typed"]
 
 [tool.uv]
 required-version = "~=0.13.5"

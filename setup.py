@@ -5,10 +5,11 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from setuptools import Distribution, setup
+from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.build_py import build_py
-from wheel.bdist_wheel import bdist_wheel
 
 ROOT = Path(__file__).parent.resolve()
 
@@ -21,37 +22,52 @@ class NativeDistribution(Distribution):
 class BuildPy(build_py):
     def run(self):
         super().run()
-        prefix = ROOT / "build" / "native"
+        build_root = ROOT / "build"
+        build_root.mkdir(exist_ok=True)
         env = os.environ.copy()
         env.setdefault("ZIG_GLOBAL_CACHE_DIR", str(ROOT / ".zig-global-cache"))
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "ziglang",
-                "build",
-                "-Doptimize=ReleaseSafe",
-                "-Dcpu=baseline",
-                "-j2",
-                f"-Dpython={sys.executable}",
-                "--prefix",
-                str(prefix),
-            ],
-            cwd=ROOT,
-            env=env,
-            check=True,
-        )
         destination = (
             ROOT / "src" / "ssz_z" / "_native"
             if self.editable_mode
             else Path(self.build_lib) / "ssz_z" / "_native"
         )
-        destination.mkdir(parents=True, exist_ok=True)
-        libraries = [p for p in prefix.rglob("*ssz_z_*") if p.suffix in {".so", ".dylib", ".dll"}]
-        if len(libraries) != 3:
-            raise RuntimeError(f"Expected three preset libraries, found {libraries}")
-        for library in libraries:
-            shutil.copy2(library, destination / library.name)
+        with TemporaryDirectory(prefix="native-", dir=build_root) as temporary:
+            prefix = Path(temporary)
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ziglang",
+                    "build",
+                    "-Doptimize=ReleaseSafe",
+                    "-Dcpu=baseline",
+                    "-j2",
+                    f"-Dpython={sys.executable}",
+                    "--prefix",
+                    str(prefix),
+                ],
+                cwd=ROOT,
+                env=env,
+                check=True,
+            )
+            libraries = []
+            for preset in ("mainnet", "minimal", "gnosis"):
+                filename = (
+                    f"ssz_z_{preset}.dll"
+                    if sys.platform == "win32"
+                    else f"libssz_z_{preset}.{'dylib' if sys.platform == 'darwin' else 'so'}"
+                )
+                library = prefix / ("bin" if sys.platform == "win32" else "lib") / filename
+                if not library.is_file():
+                    raise RuntimeError(f"Missing native library: {library}")
+                libraries.append(library)
+            # This directory contains generated artifacts only. Never carry binaries
+            # from another build or platform into the new wheel/editable install.
+            if destination.exists():
+                shutil.rmtree(destination)
+            destination.mkdir(parents=True)
+            for library in libraries:
+                shutil.copy2(library, destination / library.name)
 
 
 class NativeWheel(bdist_wheel):
