@@ -36,6 +36,7 @@ from spy_ssz import Fork as SpyFork
 from spy_ssz import ObjectKind, get_ssz_type
 
 from ssz_z import get_type
+from ssz_z.beacon_api import BlockValue
 
 
 class Response(msgspec.Struct):
@@ -181,8 +182,9 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                         if wire == "json"
                         else new_proposal.load_ssz(production_ssz)
                     )
+                    obj = BlockValue(obj)
                     header = obj.header_dict()
-                    signed = obj.sign(signature)
+                    signed = obj.sign(signature).value
                     encoded = signed.to_json() if wire == "json" else signed.to_ssz()
                     return header, "0x" + obj.block_hash_tree_root().hex(), encoded
                 decoded = (

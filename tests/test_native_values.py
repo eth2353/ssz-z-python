@@ -6,6 +6,7 @@ import pytest
 
 from ssz_z import FORKS, PRESETS, NativeValue, SSZError, get_type
 from ssz_z._native import Operation
+from ssz_z.beacon_api import BlockValue
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -17,11 +18,11 @@ def test_block_fast_path(fork, preset):
     if fork == "gloas":
         value["body"]["signed_execution_payload_bid"]["message"]["builder_index"] = 123
     encoded = codec.serialize(value)
-    native = codec.load_ssz(encoded)
-    assert native.to_ssz() is encoded
+    native = BlockValue(codec.load_ssz(encoded))
+    assert native.value.to_ssz() is encoded
     assert native.slot == 77
-    assert native.field("proposer_index") == 9
-    assert native.field("state_root") == value["state_root"]
+    assert native.value.field("proposer_index") == 9
+    assert native.value.field("state_root") == value["state_root"]
     if fork == "gloas":
         assert native.builder_index == 123
     expected_header = {key: item for key, item in value.items() if key != "body"}
@@ -37,14 +38,14 @@ def test_block_fast_path(fork, preset):
     assert native.header_dict()["slot"] == "77"
     signed = native.sign("0x" + "11" * 96)
     expected_signed = {"message": value, "signature": b"\x11" * 96}
-    assert signed.to_ssz() == signed.codec.serialize(expected_signed)
-    assert signed.hash_tree_root() == signed.codec.hash_tree_root(expected_signed)
+    assert signed.value.to_ssz() == signed.value.codec.serialize(expected_signed)
+    assert signed.value.hash_tree_root() == signed.value.codec.hash_tree_root(expected_signed)
     assert signed.block_hash_tree_root() == native.block_hash_tree_root()
     assert signed.slot == 77
-    assert codec.serialize(native) is encoded
-    assert codec.to_json(native) == codec.to_json(value)
-    assert codec.hash_tree_root(native) == codec.hash_tree_root(value)
-    assert signed.to_obj() == expected_signed
+    assert codec.serialize(native.value) is encoded
+    assert codec.to_json(native.value) == codec.to_json(value)
+    assert codec.hash_tree_root(native.value) == codec.hash_tree_root(value)
+    assert signed.value.to_obj() == expected_signed
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -56,9 +57,9 @@ def test_blob_contents_fast_path(fork, preset):
     value["block"]["body"]["blob_kzg_commitments"] = [b"\x33" * 48]
     value["blobs"] = [b"\x44" * 131072]
     value["kzg_proofs"] = [b"\x55" * 48] * (128 if fork == "fulu" else 1)
-    native = codec.load_obj(value)
+    native = BlockValue(codec.load_obj(value))
     assert native.slot == 12
-    assert native.to_obj() == value
+    assert native.value.to_obj() == value
     root = native.block_hash_tree_root()
     signed = native.sign(b"\x66" * 96)
     expected = {
@@ -66,11 +67,11 @@ def test_blob_contents_fast_path(fork, preset):
         "blobs": value["blobs"],
         "kzg_proofs": value["kzg_proofs"],
     }
-    assert signed.to_ssz() == signed.codec.serialize(expected)
-    assert signed.hash_tree_root() == signed.codec.hash_tree_root(expected)
+    assert signed.value.to_ssz() == signed.value.codec.serialize(expected)
+    assert signed.value.hash_tree_root() == signed.value.codec.hash_tree_root(expected)
     assert signed.block_hash_tree_root() == root
-    assert signed.to_obj() == expected
-    assert json.loads(signed.to_json()) == signed.codec.to_json(expected)
+    assert signed.value.to_obj() == expected
+    assert json.loads(signed.value.to_json()) == signed.value.codec.to_json(expected)
     reparsed = codec.load_json(json.dumps(codec.to_json(value)))
     assert reparsed.to_ssz() == codec.serialize(value)
 
@@ -169,8 +170,8 @@ def test_input_snapshots_and_type_checks():
     native = codec.load_ssz(encoded)
     with pytest.raises(ValueError, match="different type"):
         get_type("BeaconBlock").serialize(native)
-    with pytest.raises(SSZError, match="NotABlock"):
-        native.header_dict()
+    with pytest.raises(ValueError, match="not a block"):
+        BlockValue(native)
     with pytest.raises(TypeError):
         native.field(1)
     with pytest.raises(ValueError):
@@ -193,7 +194,7 @@ def test_native_concurrent_read_and_sign():
     def work(index):
         assert native.to_ssz() is encoded
         assert native.hash_tree_root() == expected
-        assert native.header_dict()["slot"] == "0"
+        assert BlockValue(native).header_dict()["slot"] == "0"
         signed = native.sign(bytes([index]) * 96)
         assert signed.to_obj() == {"message": expected_obj, "signature": bytes([index]) * 96}
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
@@ -206,7 +207,7 @@ def test_proposal_does_not_repeat_native_operations(monkeypatch):
     from ssz_z import types as implementation
 
     codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
-    _ = codec._signed_codec  # Resolve metadata outside the operation-count assertion.
+    _ = get_type("SignedBeaconBlockContents", fork="fulu", preset="minimal")
     data = codec.serialize(codec.default())
     calls = []
     original = implementation.call
@@ -216,10 +217,10 @@ def test_proposal_does_not_repeat_native_operations(monkeypatch):
         return original(preset, fork, name, operation, data)
 
     monkeypatch.setattr(implementation, "call", counted)
-    value = codec.load_ssz(data)
+    value = BlockValue(codec.load_ssz(data))
     value.header_dict()
     signed = value.sign(bytes(96))
-    signed.to_ssz()
+    signed.value.to_ssz()
     value.block_hash_tree_root()
     value.header_dict()
     assert value.slot == 0

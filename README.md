@@ -107,19 +107,22 @@ of materializing a Python tree. Dictionary APIs are useful for editing small
 objects.
 
 ```python
+from ssz_z.beacon_api import BlockValue
+
 proposal_type = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
-proposal = proposal_type.load_ssz(response_bytes)
+
+proposal = BlockValue(proposal_type.load_ssz(response_bytes))
 header = proposal.header_dict()               # consensus JSON header
 block_root = proposal.block_hash_tree_root()  # 32-byte unsigned block root
 slot = proposal.slot                         # scalar projection, no native call
 signed = proposal.sign(signature)            # attach an existing 96-byte BLS signature
-publication_bytes = signed.to_ssz()          # immutable bytes, no additional copy
+publication_bytes = signed.value.to_ssz()    # immutable bytes, no additional copy
 ```
 
 For JSON production responses, use
 `proposal_type.load_json(response_bytes, wrapped=True)` to parse the REST
 `data` field directly in Zig. For a bare JSON value, omit `wrapped=True`.
-`signed.to_json()` returns **wire JSON bytes**; pass those bytes to the HTTP
+`signed.value.to_json()` returns **wire JSON bytes**; pass those bytes to the HTTP
 client directly rather than JSON-encoding them again.
 
 The SSZ path above performs two native operations: validate the input and
@@ -130,11 +133,11 @@ wrapper, preserving proof/blob bytes; it performs no BLS cryptography.
 resolved on first use and cached separately.
 
 `NativeValue.hash_tree_root()` hashes the complete value, including any
-contents/signed envelope; `block_hash_tree_root()` specifically hashes the
+contents/signed envelope; `BlockValue.block_hash_tree_root()` specifically hashes the
 unsigned block. `header_dict()` returns decimal/hex strings for signer APIs.
 `field("body.signed_execution_payload_bid.message.builder_index")` projects a
 scalar/byte field from nested containers without decoding the full object.
-Gloas block/envelope values also expose `.builder_index`.
+Gloas `BlockValue` instances also expose `.builder_index`; generic values use `field()`.
 
 Values are frozen Python objects containing immutable SSZ bytes. Python manages
 their lifetime, just like any other bytes object. Values can be shared between
@@ -256,3 +259,8 @@ before returning. The native writer transfers ownership of its output buffer
 to the caller. [native/bindings.h](native/bindings.h) documents ABI version 1.
 Python and native libraries are built and installed together; the loader rejects
 a mismatched native ABI.
+
+Beacon API projections (`header_dict`, `block_hash_tree_root`, `slot`, and
+`builder_index`) belong to `ssz_z.beacon_api.BlockValue`. Its `sign()` returns
+a new adapter whose `.value` contains the signed wire object. Generic
+`NativeValue.sign()` only wraps schemas with `message` and `signature` fields.

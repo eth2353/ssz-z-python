@@ -91,7 +91,6 @@ class NativeValue:
     codec: "SSZType"
     _ssz: bytes = field(repr=False)
     _root: bytes | None = field(repr=False, compare=False)
-    _projection: tuple[bytes, bytes] | None = field(repr=False, compare=False)
 
     def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview):
         data = input_bytes(data)
@@ -102,7 +101,6 @@ class NativeValue:
         object.__setattr__(self, "codec", codec)
         object.__setattr__(self, "_ssz", data)
         object.__setattr__(self, "_root", None)
-        object.__setattr__(self, "_projection", None)
 
     @classmethod
     def _from_validated(cls, codec, data):
@@ -128,41 +126,9 @@ class NativeValue:
     def hash_tree_root(self) -> bytes:
         root = self._root
         if root is None:
-            root = (
-                self.block_hash_tree_root()
-                if self.codec.name in {"BeaconBlock", "BlindedBeaconBlock"}
-                else self.codec._call(Operation.HASH_TREE_ROOT, self._ssz)
-            )
+            root = self.codec._call(Operation.HASH_TREE_ROOT, self._ssz)
             object.__setattr__(self, "_root", root)
         return root
-
-    def _project_block(self) -> tuple[bytes, bytes]:
-        projection = self._projection
-        if projection is None:
-            data = self.codec._call(Operation.BLOCK_PROJECTION, self._ssz)
-            if len(data) != 144:
-                raise RuntimeError("Invalid block projection from native library")
-            projection = (data[:112], data[112:])
-            object.__setattr__(self, "_projection", projection)
-            if self.codec.name in {"BeaconBlock", "BlindedBeaconBlock"}:
-                object.__setattr__(self, "_root", projection[1])
-        return projection
-
-    def header_dict(self) -> dict[str, str]:
-        """Return a BeaconBlockHeader in consensus JSON form, using one body hash."""
-        data = self._project_block()[0]
-        slot, proposer = struct.unpack_from("<QQ", data)
-        return {
-            "slot": str(slot),
-            "proposer_index": str(proposer),
-            "parent_root": "0x" + data[16:48].hex(),
-            "state_root": "0x" + data[48:80].hex(),
-            "body_root": "0x" + data[80:112].hex(),
-        }
-
-    def block_hash_tree_root(self) -> bytes:
-        """Hash the unsigned block, including when this value is a contents envelope."""
-        return self._project_block()[1]
 
     def field(self, path: str | tuple[str, ...]) -> Any:
         """Project a scalar/byte field from nested containers without a native call."""
@@ -175,37 +141,6 @@ class NativeValue:
         for part in path:
             layout, data = layout.field(data, part)
         return layout.scalar(data)
-
-    def _block_path(self):
-        name = self.codec.name
-        if name == "BeaconBlockContents":
-            return ("block",)
-        if name == "SignedBeaconBlockContents":
-            return ("signed_block", "message")
-        if name in {"SignedBeaconBlock", "SignedBlindedBeaconBlock"}:
-            return ("message",)
-        if name in {"BeaconBlock", "BlindedBeaconBlock"}:
-            return ()
-        raise ValueError(f"{name} is not a block type")
-
-    @property
-    def slot(self) -> int:
-        return self.field((*self._block_path(), "slot"))
-
-    @property
-    def builder_index(self) -> int:
-        if self.codec.name in {"ExecutionPayloadEnvelope", "SignedExecutionPayloadEnvelope"}:
-            prefix = ("message",) if self.codec.name.startswith("Signed") else ()
-            return self.field((*prefix, "builder_index"))
-        return self.field(
-            (
-                *self._block_path(),
-                "body",
-                "signed_execution_payload_bid",
-                "message",
-                "builder_index",
-            )
-        )
 
     def sign(self, signature: str | bytes | bytearray | memoryview) -> "NativeValue":
         """Attach an existing BLS signature with one buffer allocation and no FFI calls.
@@ -226,26 +161,16 @@ class NativeValue:
             raise SSZError("Signature must contain exactly 96 bytes")
         data = self._ssz
         target = self.codec._signed_codec
-        if self.codec.name == "BeaconBlockContents":
-            a, b, c = struct.unpack_from("<III", data)
-            parts = (
-                struct.pack("<III", a, b + 100, c + 100),
-                struct.pack("<I", 100),
-                signature,
-                memoryview(data)[a:],
-            )
-        else:
-            parts = (
-                (struct.pack("<I", 100), signature, data)
-                if self.codec._layout.size is None
-                else (data, signature)
-            )
+        parts = (
+            (struct.pack("<I", 100), signature, data)
+            if self.codec._layout.size is None
+            else (data, signature)
+        )
         size = sum(len(part) for part in parts)
         if size > MAX_INPUT_SIZE:
             raise SSZError(f"Signed output exceeds {MAX_INPUT_SIZE} bytes")
         signed = NativeValue._from_validated(target, b"".join(parts))
-        object.__setattr__(signed, "_projection", self._projection)
-        if self.codec.name != "BeaconBlockContents" and self._root is not None:
+        if self._root is not None:
             sig_root = hashlib.sha256(
                 hashlib.sha256(signature[:64]).digest()
                 + hashlib.sha256(signature[64:] + bytes(32)).digest()

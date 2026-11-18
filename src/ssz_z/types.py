@@ -179,10 +179,9 @@ class SSZType:
     @cached_property
     def _signed_codec(self):
         target = get_type("Signed" + self.name, fork=self.fork, preset=self.preset)
-        if self.name != "BeaconBlockContents":
-            fields = target._schema.get("fields", {})
-            if tuple(fields) != ("message", "signature") or fields["message"] != self._schema:
-                raise ValueError("No compatible signed wrapper for this value")
+        fields = target._schema.get("fields", {})
+        if tuple(fields) != ("message", "signature") or fields["message"] != self._schema:
+            raise ValueError("No compatible signed wrapper for this value")
         return target
 
     def _check_value(self, value: NativeValue):

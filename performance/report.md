@@ -64,14 +64,15 @@ block and are separate from the comparison above.
 
 ```python
 from ssz_z import get_type
+from ssz_z.beacon_api import BlockValue
 
 codec = get_type("BeaconBlockContents", fork="fulu", preset="mainnet")
-proposal = codec.load_ssz(response_bytes)
+proposal = BlockValue(codec.load_ssz(response_bytes))
 header = proposal.header_dict()  # consensus JSON strings for signer APIs
 root_bytes = proposal.block_hash_tree_root()
 slot = proposal.slot
 signed = proposal.sign(signature)
-publication = signed.to_ssz()
+publication = signed.value.to_ssz()
 ```
 
 Use `load_json(response_bytes, wrapped=True)` for a REST response with a `data`
