@@ -3,7 +3,7 @@ const testing = std.testing;
 
 pub const stateTransition = @import("state_transition.zig").stateTransition;
 pub const processSlots = @import("state_transition.zig").processSlots;
-pub const Diagnostics = @import("diagnostics").Diagnostics;
+pub const Diagnostics = @import("diagnostics.zig").Diagnostics;
 pub const TransitionOpts = @import("state_transition.zig").TransitionOpts;
 
 pub const metrics = @import("metrics.zig");
@@ -23,6 +23,9 @@ pub const SyncCommitteeCache = @import("./cache/sync_committee_cache.zig").SyncC
 
 pub const committee_indices = @import("./utils/committee_indices.zig");
 pub const PubkeyCache = @import("./cache/pubkey_cache.zig").PubkeyCache;
+pub const builder_deposit_signature_cache = @import("./cache/builder_deposit_signature_cache.zig");
+pub const BuilderDepositSignatureCacheRc = builder_deposit_signature_cache.BuilderDepositSignatureCacheRc;
+pub const preVerifyBuilderDepositsPreGloas = @import("./utils/pre_verify_builder_deposits.zig").preVerifyBuilderDepositsPreGloas;
 pub const pkix = @import("./cache/pkix.zig");
 pub const signature_set_verifier = @import("./signature_sets/verifier.zig");
 
@@ -143,3 +146,20 @@ test {
     testing.refAllDecls(weak_subjectivity);
     testing.refAllDecls(@import("ssz_bytes.zig"));
 }
+
+pub const processExecutionPayloadBid = @import("block/process_execution_payload_bid.zig").processExecutionPayloadBid;
+pub const processParentExecutionPayload = @import("block/process_parent_execution_payload.zig").processParentExecutionPayload;
+pub const applyParentExecutionPayload = @import("block/process_parent_execution_payload.zig").applyParentExecutionPayload;
+pub const processBuilderDepositRequest = @import("block/process_builder_deposit_request.zig").processBuilderDepositRequest;
+pub const processBuilderExitRequest = @import("block/process_builder_exit_request.zig").processBuilderExitRequest;
+pub const processPayloadAttestation = @import("block/process_payload_attestation.zig").processPayloadAttestation;
+pub const processBuilderPendingPayments = @import("epoch/process_builder_pending_payments.zig").processBuilderPendingPayments;
+pub const processPtcWindow = @import("epoch/process_ptc_window.zig").processPtcWindow;
+pub const canBuilderCoverBid = @import("utils/gloas.zig").canBuilderCoverBid;
+pub const getPayloadTimelinessCommittee = @import("utils/gloas.zig").getPayloadTimelinessCommittee;
+
+pub const upgradeStateToGloas = @import("slot/upgrade_state_to_gloas.zig").upgradeStateToGloas;
+pub const upgradeStateToHeze = @import("slot/upgrade_state_to_heze.zig").upgradeStateToHeze;
+pub const getInclusionListCommittee = @import("utils/inclusion_list.zig").getInclusionListCommittee;
+pub const getIndicesInInclusionListCommittee = @import("utils/inclusion_list.zig").getIndicesInInclusionListCommittee;
+pub const getInclusionListSigningRoot = @import("signature_sets/inclusion_list.zig").getInclusionListSigningRoot;

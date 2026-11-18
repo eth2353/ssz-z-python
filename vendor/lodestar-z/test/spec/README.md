@@ -18,10 +18,13 @@ Generated files:
 ## Usage
 
 1. Run `zig build run:write_spec_tests` to generate test files from spec test data.
-  - Spec tests can be re-downloaded by running `zig build run:download_spec_tests`
+
+- Spec tests can be re-downloaded by running `zig build run:download_spec_tests`
+
 2. Execute tests with `zig build test:spec_tests`.
-  - Specific tests can be run by adding filters
-  - Minimal preset can be used with `-Dpreset=minimal`
+
+- Specific tests can be run by adding filters
+- Minimal preset can be used with `-Dpreset=minimal`
 
 ## Supported Components
 

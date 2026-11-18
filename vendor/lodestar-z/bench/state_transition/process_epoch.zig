@@ -64,12 +64,11 @@ fn ProcessInactivityUpdatesBench(comptime fork: ForkSeq) type {
     return struct {
         epoch_transition_cache: *EpochTransitionCache,
 
-        pub fn run(self: *@This(), allocator: std.mem.Allocator) void {
+        pub fn run(self: *@This(), _: std.mem.Allocator) void {
             const cache = self.epoch_transition_cache;
 
             state_transition.processInactivityUpdates(
                 fork,
-                allocator,
                 BenchState.cloned_cached_state.config,
                 BenchState.cloned_cached_state.epoch_cache,
                 BenchState.cloned_cached_state.state.castToFork(fork),
@@ -285,13 +284,37 @@ fn ProcessParticipationFlagUpdatesBench(comptime fork: ForkSeq) type {
 
 fn ProcessSyncCommitteeUpdatesBench(comptime fork: ForkSeq) type {
     return struct {
+        io: std.Io,
+
         pub fn run(self: *@This(), allocator: std.mem.Allocator) void {
-            _ = self;
+            state_transition.processSyncCommitteeUpdates(
+                fork,
+                allocator,
+                self.io,
+                BenchState.cloned_cached_state.epoch_cache,
+                BenchState.cloned_cached_state.state.castToFork(fork),
+            ) catch unreachable;
+        }
+    };
+}
+
+/// `ProcessSyncCommitteeUpdatesBench` only rotates when the state is in the last epoch of a sync
+/// committee period. This case moves the cached epoch there so the step always rotates.
+fn ProcessSyncCommitteeRotationBench(comptime fork: ForkSeq) type {
+    return struct {
+        io: std.Io,
+
+        pub fn run(self: *@This(), allocator: std.mem.Allocator) void {
+            const period = preset.EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+            comptime std.debug.assert(std.math.isPowerOfTwo(period));
+            const epoch_cache = BenchState.cloned_cached_state.epoch_cache;
+            epoch_cache.epoch |= period - 1;
 
             state_transition.processSyncCommitteeUpdates(
                 fork,
                 allocator,
-                BenchState.cloned_cached_state.epoch_cache,
+                self.io,
+                epoch_cache,
                 BenchState.cloned_cached_state.state.castToFork(fork),
             ) catch unreachable;
         }
@@ -413,7 +436,7 @@ fn ProcessEpochBench(comptime fork: ForkSeq) type {
             ) catch unreachable;
             // hashTreeRoot, not commit: the re-merkleization runs here — the
             // real per-epoch cost (state_root is verified each epoch).
-            _ = BenchState.cloned_cached_state.state.hashTreeRoot() catch unreachable;
+            _ = BenchState.cloned_cached_state.state.hashTreeRootParallel(self.io) catch unreachable;
         }
     };
 }
@@ -461,7 +484,6 @@ fn ProcessEpochSegmentedBench(comptime fork: ForkSeq) type {
                 const inactivity_start = time.start(io);
                 state_transition.processInactivityUpdates(
                     fork,
-                    allocator,
                     BenchState.cloned_cached_state.config,
                     epoch_cache,
                     fork_state,
@@ -501,9 +523,11 @@ fn ProcessEpochSegmentedBench(comptime fork: ForkSeq) type {
             ) catch unreachable;
             recordSegment(.rewards_and_penalties, @as(u64, @intCast(time.since(io, rewards_start).nanoseconds)));
 
-            const eth1_start = time.start(io);
-            state_transition.processEth1DataReset(fork, fork_state, cache) catch unreachable;
-            recordSegment(.eth1_data_reset, @as(u64, @intCast(time.since(io, eth1_start).nanoseconds)));
+            if (comptime fork.lt(.heze)) {
+                const eth1_start = time.start(io);
+                state_transition.processEth1DataReset(fork, fork_state, cache) catch unreachable;
+                recordSegment(.eth1_data_reset, @as(u64, @intCast(time.since(io, eth1_start).nanoseconds)));
+            }
 
             if (comptime fork.gte(.electra)) {
                 const pending_deposits_start = time.start(io);
@@ -576,6 +600,7 @@ fn ProcessEpochSegmentedBench(comptime fork: ForkSeq) type {
                 state_transition.processSyncCommitteeUpdates(
                     fork,
                     allocator,
+                    io,
                     epoch_cache,
                     fork_state,
                 ) catch unreachable;
@@ -595,7 +620,7 @@ fn ProcessEpochSegmentedBench(comptime fork: ForkSeq) type {
             }
 
             const state_root_start = time.start(io);
-            _ = BenchState.cloned_cached_state.state.hashTreeRoot() catch unreachable;
+            _ = BenchState.cloned_cached_state.state.hashTreeRootParallel(io) catch unreachable;
             recordSegment(.state_root, @as(u64, @intCast(time.since(io, state_root_start).nanoseconds)));
 
             recordSegment(.epoch_total, @as(u64, @intCast(time.since(io, epoch_start).nanoseconds)));
@@ -765,9 +790,11 @@ fn runBenchmark(
         .epoch_transition_cache = &epoch_transition_cache,
     }, .{ .hooks = hooks });
 
-    try bench.addParam("eth1_data_reset", &ProcessEth1DataResetBench(fork){
-        .epoch_transition_cache = &epoch_transition_cache,
-    }, .{ .hooks = hooks });
+    if (comptime fork.lt(.heze)) {
+        try bench.addParam("eth1_data_reset", &ProcessEth1DataResetBench(fork){
+            .epoch_transition_cache = &epoch_transition_cache,
+        }, .{ .hooks = hooks });
+    }
 
     if (comptime fork.gte(.electra)) {
         try bench.addParam("pending_deposits", &ProcessPendingDepositsBench(fork){
@@ -801,7 +828,12 @@ fn runBenchmark(
     if (comptime fork.gte(.altair)) {
         try bench.addParam("participation_flags", &ProcessParticipationFlagUpdatesBench(fork){}, .{ .hooks = hooks });
 
-        try bench.addParam("sync_committee_updates", &ProcessSyncCommitteeUpdatesBench(fork){}, .{ .hooks = hooks });
+        try bench.addParam("sync_committee_updates", &ProcessSyncCommitteeUpdatesBench(fork){
+            .io = io,
+        }, .{ .hooks = hooks });
+        try bench.addParam("sync_committee_rotation", &ProcessSyncCommitteeRotationBench(fork){
+            .io = io,
+        }, .{ .hooks = hooks });
     }
 
     if (comptime fork.gte(.fulu)) {

@@ -28,6 +28,10 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             return try self.inner.hashTreeRoot();
         }
 
+        pub fn hashTreeRootParallel(self: *Self, io: std.Io) !*const [32]u8 {
+            return try self.inner.hashTreeRootParallel(io);
+        }
+
         pub fn deinit(self: *Self) void {
             self.inner.deinit();
         }
@@ -68,6 +72,11 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             return try self.inner.get("latest_block_header");
         }
 
+        pub fn latestBlockHeaderSlot(self: *Self) !u64 {
+            var header = try self.inner.getReadonly("latest_block_header");
+            return header.get("slot");
+        }
+
         pub fn setLatestBlockHeader(self: *Self, header: *const ForkTypes(f).BeaconBlockHeader.Type) !void {
             try self.inner.setValue("latest_block_header", header);
         }
@@ -93,18 +102,22 @@ pub fn BeaconState(comptime f: ForkSeq) type {
         }
 
         pub fn eth1Data(self: *Self) !*ForkTypes(f).Eth1Data.TreeView {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             return try self.inner.get("eth1_data");
         }
 
         pub fn setEth1Data(self: *Self, eth1_data: *const ForkTypes(f).Eth1Data.Type) !void {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             try self.inner.setValue("eth1_data", eth1_data);
         }
 
         pub fn eth1DataVotes(self: *Self) !*ForkTypes(f).Eth1DataVotes.TreeView {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             return try self.inner.get("eth1_data_votes");
         }
 
         pub fn setEth1DataVotes(self: *Self, eth1_data_votes: *ForkTypes(f).Eth1DataVotes.TreeView) !void {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             try self.inner.set("eth1_data_votes", eth1_data_votes);
         }
 
@@ -114,14 +127,17 @@ pub fn BeaconState(comptime f: ForkSeq) type {
         }
 
         pub fn resetEth1DataVotes(self: *Self) !void {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             try self.inner.setValue("eth1_data_votes", &ForkTypes(f).Eth1DataVotes.default_value);
         }
 
         pub fn eth1DepositIndex(self: *Self) !u64 {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             return try self.inner.get("eth1_deposit_index");
         }
 
         pub fn setEth1DepositIndex(self: *Self, index: u64) !void {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             try self.inner.set("eth1_deposit_index", index);
         }
 
@@ -210,23 +226,19 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             try self.inner.setValue("current_epoch_attestations", &ForkTypes(.phase0).EpochAttestations.default_value);
         }
 
-        pub fn previousEpochParticipation(self: *Self) !*ForkTypes(.altair).EpochParticipation.TreeView {
-            if (comptime f == .phase0) return error.InvalidAtFork;
+        pub fn previousEpochParticipation(self: *Self) !*ForkTypes(f).EpochParticipation.TreeView {
             return try self.inner.get("previous_epoch_participation");
         }
 
-        pub fn setPreviousEpochParticipation(self: *Self, participations: *const ForkTypes(.altair).EpochParticipation.Type) !void {
-            if (comptime f == .phase0) return error.InvalidAtFork;
+        pub fn setPreviousEpochParticipation(self: *Self, participations: *const ForkTypes(f).EpochParticipation.Type) !void {
             try self.inner.setValue("previous_epoch_participation", participations);
         }
 
-        pub fn currentEpochParticipation(self: *Self) !*ForkTypes(.altair).EpochParticipation.TreeView {
-            if (comptime f == .phase0) return error.InvalidAtFork;
+        pub fn currentEpochParticipation(self: *Self) !*ForkTypes(f).EpochParticipation.TreeView {
             return try self.inner.get("current_epoch_participation");
         }
 
-        pub fn setCurrentEpochParticipation(self: *Self, participations: *const ForkTypes(.altair).EpochParticipation.Type) !void {
-            if (comptime f == .phase0) return error.InvalidAtFork;
+        pub fn setCurrentEpochParticipation(self: *Self, participations: *const ForkTypes(f).EpochParticipation.Type) !void {
             try self.inner.setValue("current_epoch_participation", participations);
         }
 
@@ -243,7 +255,7 @@ pub fn BeaconState(comptime f: ForkSeq) type {
                 try self.inner.set("previous_epoch_participation", current_epoch_participation_copy);
             }
 
-            const new_current_root = try ForkTypes(.altair).EpochParticipation.tree.zeros(
+            const new_current_root = try ForkTypes(f).EpochParticipation.tree.zeros(
                 self.inner.pool,
                 length,
             );
@@ -288,8 +300,7 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             return try checkpoint_view.get("epoch");
         }
 
-        pub fn inactivityScores(self: *Self) !*ForkTypes(.altair).InactivityScores.TreeView {
-            if (comptime f == .phase0) return error.InvalidAtFork;
+        pub fn inactivityScores(self: *Self) !*ForkTypes(f).InactivityScores.TreeView {
             return try self.inner.get("inactivity_scores");
         }
 
@@ -362,11 +373,13 @@ pub fn BeaconState(comptime f: ForkSeq) type {
         }
 
         pub fn depositRequestsStartIndex(self: *Self) !u64 {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
             return try self.inner.get("deposit_requests_start_index");
         }
 
         pub fn setDepositRequestsStartIndex(self: *Self, index: u64) !void {
+            if (comptime f.gte(.heze)) return error.InvalidAtFork;
             if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
             try self.inner.set("deposit_requests_start_index", index);
         }
@@ -421,33 +434,27 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             try self.inner.set("earliest_consolidation_epoch", epoch);
         }
 
-        pub fn pendingDeposits(self: *Self) !*ForkTypes(.electra).PendingDeposits.TreeView {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn pendingDeposits(self: *Self) !*ForkTypes(f).PendingDeposits.TreeView {
             return try self.inner.get("pending_deposits");
         }
 
-        pub fn setPendingDeposits(self: *Self, deposits: *ForkTypes(.electra).PendingDeposits.TreeView) !void {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn setPendingDeposits(self: *Self, deposits: *ForkTypes(f).PendingDeposits.TreeView) !void {
             try self.inner.set("pending_deposits", deposits);
         }
 
-        pub fn pendingPartialWithdrawals(self: *Self) !*ForkTypes(.electra).PendingPartialWithdrawals.TreeView {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn pendingPartialWithdrawals(self: *Self) !*ForkTypes(f).PendingPartialWithdrawals.TreeView {
             return try self.inner.get("pending_partial_withdrawals");
         }
 
-        pub fn setPendingPartialWithdrawals(self: *Self, pending_partial_withdrawals: *ForkTypes(.electra).PendingPartialWithdrawals.TreeView) !void {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn setPendingPartialWithdrawals(self: *Self, pending_partial_withdrawals: *ForkTypes(f).PendingPartialWithdrawals.TreeView) !void {
             try self.inner.set("pending_partial_withdrawals", pending_partial_withdrawals);
         }
 
-        pub fn pendingConsolidations(self: *Self) !*ForkTypes(.electra).PendingConsolidations.TreeView {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn pendingConsolidations(self: *Self) !*ForkTypes(f).PendingConsolidations.TreeView {
             return try self.inner.get("pending_consolidations");
         }
 
-        pub fn setPendingConsolidations(self: *Self, consolidations: *ForkTypes(.electra).PendingConsolidations.TreeView) !void {
-            if (comptime (f == .phase0 or f == .altair or f == .bellatrix or f == .capella or f == .deneb)) return error.InvalidAtFork;
+        pub fn setPendingConsolidations(self: *Self, consolidations: *ForkTypes(f).PendingConsolidations.TreeView) !void {
             try self.inner.set("pending_consolidations", consolidations);
         }
 
@@ -484,7 +491,7 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             errdefer upgraded.deinit();
 
             inline for (F.fields) |fld| {
-                if (comptime T.hasField(fld.name)) {
+                if (comptime @hasField(T.Type, fld.name)) {
                     if (T.getFieldType(fld.name) != fld.type) continue;
 
                     if (comptime isBasicType(fld.type)) {
@@ -510,7 +517,8 @@ pub fn BeaconState(comptime f: ForkSeq) type {
             .deneb => .electra,
             .electra => .fulu,
             .fulu => .gloas,
-            .gloas => .gloas,
+            .gloas => .heze,
+            .heze => .heze,
         }) {
             const cur = self.inner;
             const allocator = cur.allocator;
@@ -524,7 +532,8 @@ pub fn BeaconState(comptime f: ForkSeq) type {
                 .deneb => .{ .inner = try populateFields(ForkTypes(.deneb).BeaconState, ForkTypes(.electra).BeaconState, allocator, pool, cur) },
                 .electra => .{ .inner = try populateFields(ForkTypes(.electra).BeaconState, ForkTypes(.fulu).BeaconState, allocator, pool, cur) },
                 .fulu => .{ .inner = try populateFields(ForkTypes(.fulu).BeaconState, ForkTypes(.gloas).BeaconState, allocator, pool, cur) },
-                .gloas => return error.InvalidAtFork,
+                .gloas => .{ .inner = try populateFields(ForkTypes(.gloas).BeaconState, ForkTypes(.heze).BeaconState, allocator, pool, cur) },
+                .heze => return error.InvalidAtFork,
             };
         }
     };

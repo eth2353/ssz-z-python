@@ -1,9 +1,12 @@
 {
   "lodestar-z": {
-    "repository": "https://github.com/ChainSafe/lodestar-z",
-    "branch": "main",
-    "commit": "ba4f89e967bdb498f1d856f699f1ba2b863be330",
-    "license": "Apache-2.0"
+    "repository": "https://github.com/ChainSafe/lodestar",
+    "branch": "unstable",
+    "commit": "0ac7778d7034693a0818296dbe717f2999576ab1",
+    "license": "Apache-2.0",
+    "vendored_path": "vendor/lodestar-z",
+    "purpose": "Zig source snapshot from the active Lodestar monorepo; TypeScript packages are omitted",
+    "previous_repository": "https://github.com/ChainSafe/lodestar-z"
   },
   "hashtree-z": {
     "repository": "https://github.com/ChainSafe/hashtree-z",

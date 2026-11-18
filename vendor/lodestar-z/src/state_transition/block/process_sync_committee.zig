@@ -114,7 +114,6 @@ pub fn processSyncAggregate(
 
 /// Consumers should deinit the returned pubkeys
 /// this is to be used when we implement getBlockSignatureSets
-/// see https://github.com/ChainSafe/state-transition-z/issues/72
 pub fn getSyncCommitteeSignatureSet(
     allocator: Allocator,
     io: std.Io,

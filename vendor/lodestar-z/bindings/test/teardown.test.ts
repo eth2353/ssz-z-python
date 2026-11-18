@@ -7,7 +7,7 @@ describe("BeaconStateView teardown", () => {
     const result = spawnSync(
       process.execPath,
       ["--import", "tsx", fileURLToPath(new URL("./fixtures/teardown.ts", import.meta.url))],
-      {cwd: new URL("../..", import.meta.url), encoding: "utf8", timeout: 60_000}
+      {cwd: new URL("..", import.meta.url), encoding: "utf8", timeout: 60_000}
     );
     expect(result.status, `stdout=${result.stdout} stderr=${result.stderr}`).toBe(0);
     expect(result.stderr, "no panic on stderr").not.toContain("panic:");

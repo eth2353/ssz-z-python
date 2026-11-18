@@ -1,0 +1,32 @@
+name: Check docs
+
+on:
+  push:
+    # We intentionally don't run push on feature branches. See PR for rational.
+    branches: [unstable, stable]
+  pull_request:
+
+jobs:
+  build:
+    name: Docs spellcheck
+    runs-on: ubuntu-latest
+    steps:
+      # <common-build> - Uses YAML anchors in the future
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: "./.github/actions/setup-and-build"
+        with:
+          node: 26
+
+      - name: Check wordlist is sorted
+        run: scripts/wordlist_sort_check.sh
+
+      - name: Build and collect docs
+        run: pnpm docs:build
+
+      - name: Test and build documentation site
+        working-directory: docs
+        run: pnpm install --frozen-lockfile && pnpm test && pnpm build
+
+      # Run spellcheck AFTER building docs, in case the CLI reference has issues
+      - name: Spellcheck
+        uses: rojopolis/spellcheck-github-actions@dad57fc333130f4c9ae9632a6ad7ddc4de3515a2 # 0.69.0

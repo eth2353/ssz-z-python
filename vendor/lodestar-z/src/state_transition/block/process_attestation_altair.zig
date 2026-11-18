@@ -3,6 +3,7 @@ const metrics = @import("../metrics.zig");
 const Allocator = std.mem.Allocator;
 const types = @import("consensus_types");
 const Epoch = types.primitive.Epoch.Type;
+const ValidatorIndex = types.primitive.ValidatorIndex.Type;
 const preset = @import("preset").preset;
 const BeaconConfig = @import("config").BeaconConfig;
 const ForkSeq = @import("config").ForkSeq;
@@ -14,12 +15,14 @@ const SlashingsCache = @import("../cache/slashings_cache.zig").SlashingsCache;
 const c = @import("constants");
 const RootCache = @import("../cache/root_cache.zig").RootCache;
 const validateAttestation = @import("./process_attestation_phase0.zig").validateAttestation;
+const MAX_AGGREGATION_BITS = @import("./process_attestation_phase0.zig").MAX_AGGREGATION_BITS;
 const getAttestationWithIndicesSignatureSet = @import("../signature_sets/indexed_attestation.zig").getAttestationWithIndicesSignatureSet;
 const verifyAggregatedSignatureSet = @import("../utils/signature_sets.zig").verifyAggregatedSignatureSet;
 const getBeaconProposer = @import("../cache/get_beacon_proposer.zig").getBeaconProposer;
 const Checkpoint = types.phase0.Checkpoint.Type;
 const isTimelyTarget = @import("./process_attestation_phase0.zig").isTimelyTarget;
 const increaseBalance = @import("../utils/balance.zig").increaseBalance;
+const isAttestationSameSlotRootCache = @import("../utils/gloas.zig").isAttestationSameSlotRootCache;
 
 const PROPOSER_REWARD_DOMINATOR = ((c.WEIGHT_DENOMINATOR - c.PROPOSER_WEIGHT) * c.WEIGHT_DENOMINATOR) / c.PROPOSER_WEIGHT;
 
@@ -42,6 +45,7 @@ pub fn processAttestationsAltair(
     proposer_rewards: *ProposerRewards,
     slashings_cache: *const SlashingsCache,
     attestations: []const ForkTypes(fork).Attestation.Type,
+    parent_slot: ?u64,
     verify_signature: bool,
 ) !void {
     const effective_balance_increments = epoch_cache.effective_balance_increments.get().items;
@@ -56,14 +60,31 @@ pub fn processAttestationsAltair(
     var new_seen_attesters: u64 = 0;
     var new_seen_attesters_effective_balance: u64 = 0;
 
+    var payment_weight: [2 * preset.SLOTS_PER_EPOCH]u64 = @splat(0);
     var proposer_reward: u64 = 0;
+
+    var max_bit_len: usize = 0;
+    for (attestations) |*attestation| {
+        max_bit_len = @max(max_bit_len, attestation.aggregation_bits.bit_len);
+    }
+    // Gloas aggregation bits have no SSZ limit; validateAttestation rejects longer ones before use.
+    const buffer_len = @min(max_bit_len, MAX_AGGREGATION_BITS);
+
+    const attesting_indices_buffer = try allocator.alloc(ValidatorIndex, buffer_len);
+    defer allocator.free(attesting_indices_buffer);
+
+    var current_participation = try (try state.currentEpochParticipation()).editor();
+    defer current_participation.deinit();
+    var previous_participation = try (try state.previousEpochParticipation()).editor();
+    defer previous_participation.deinit();
+
     for (attestations) |*attestation| {
         const data = &attestation.data;
         try validateAttestation(fork, epoch_cache, state, attestation);
 
         // Retrieve the validator indices from the attestation participation bitfield
-        var attesting_indices = try if (comptime fork.lt(.electra)) epoch_cache.getAttestingIndicesPhase0(allocator, attestation) else epoch_cache.getAttestingIndicesElectra(allocator, attestation);
-        defer attesting_indices.deinit(allocator);
+        const attesting_indices =
+            try epoch_cache.getAttestingIndicesInto(fork, attestation, attesting_indices_buffer);
 
         // this check is done last because its the most expensive (if signature verification is toggled on)
         // Unlike phase0 which calls isValidIndexedAttestation, altair+ only verifies the signature
@@ -76,7 +97,7 @@ pub fn processAttestationsAltair(
                 epoch_cache,
                 &attestation.data,
                 attestation.signature,
-                attesting_indices.items,
+                attesting_indices,
             );
             defer allocator.free(sig_set.pubkeys);
             if (!try verifyAggregatedSignatureSet(&sig_set)) {
@@ -85,14 +106,19 @@ pub fn processAttestationsAltair(
         }
 
         const in_current_epoch = data.target.epoch == current_epoch;
-        var epoch_participation = if (in_current_epoch) try state.currentEpochParticipation() else try state.previousEpochParticipation();
-        const flags_attestation = try getAttestationParticipationStatus(fork, data, state_slot - data.slot, current_epoch, root_cache);
+        const epoch_participation =
+            if (in_current_epoch) &current_participation else &previous_participation;
+        const flags_attestation = try getAttestationParticipationStatus(fork, data, state_slot - data.slot, current_epoch, root_cache, parent_slot);
+        const same_slot = if (comptime fork.gte(.gloas)) try isAttestationSameSlotRootCache(fork, root_cache, data) else false;
 
         // For each participant, update their participation
         // In epoch processing, this participation info is used to calculate balance updates
         var total_balance_increments_with_weight: u64 = 0;
-        for (attesting_indices.items) |validator_index| {
+        for (attesting_indices) |validator_index| {
             const flags = try epoch_participation.get(validator_index);
+            // Returns flags that are NOT set before (~ bitwise NOT) AND are set after
+            const flags_new_set = ~flags & flags_attestation;
+            if (flags_new_set == 0) continue;
 
             // For normal block, > 90% of attestations belong to current epoch
             // At epoch boundary, 100% of attestations belong to previous epoch
@@ -101,12 +127,14 @@ pub fn processAttestationsAltair(
             // no setBitwiseOR implemented in zig ssz, so we do it manually here
             try epoch_participation.set(validator_index, flags_attestation | flags);
 
-            // Returns flags that are NOT set before (~ bitwise NOT) AND are set after
-            const flags_new_set = ~flags & flags_attestation;
-            if (flags_new_set != 0) {
-                new_seen_attesters += 1;
-                new_seen_attesters_effective_balance += effective_balance_increments[validator_index];
+            if (comptime fork.gte(.gloas)) {
+                if (same_slot and flags == 0) {
+                    const payment_index = (if (in_current_epoch) @as(usize, preset.SLOTS_PER_EPOCH) else 0) + data.slot % preset.SLOTS_PER_EPOCH;
+                    payment_weight[payment_index] += effective_balance_increments[validator_index];
+                }
             }
+            new_seen_attesters += 1;
+            new_seen_attesters_effective_balance += effective_balance_increments[validator_index];
 
             // Spec:
             // baseReward = state.validators[index].effectiveBalance / EFFECTIVE_BALANCE_INCREMENT * baseRewardPerIncrement;
@@ -138,6 +166,19 @@ pub fn processAttestationsAltair(
         proposer_reward += @divFloor(proposer_reward_numerator, PROPOSER_REWARD_DOMINATOR);
     }
 
+    if (comptime fork.gte(.gloas)) {
+        var payments = try state.inner.get("builder_pending_payments");
+        for (payment_weight, 0..) |weight, i| {
+            if (weight == 0) continue;
+            var payment: ForkTypes(fork).BuilderPendingPayment.Type = undefined;
+            try payments.getValue(undefined, i, &payment);
+            if (payment.withdrawal.amount > 0) {
+                payment.weight += weight * preset.EFFECTIVE_BALANCE_INCREMENT;
+                try payments.setValue(i, &payment);
+            }
+        }
+    }
+
     metrics.state_transition.new_seen_attesters_per_block.set(new_seen_attesters);
     metrics.state_transition.new_seen_attesters_effective_balance_per_block.set(new_seen_attesters_effective_balance);
     metrics.state_transition.attestations_per_block.set(@intCast(attestations.len));
@@ -152,6 +193,7 @@ pub fn getAttestationParticipationStatus(
     inclusion_delay: u64,
     current_epoch: Epoch,
     root_cache: *RootCache(fork),
+    parent_slot: ?u64,
 ) !u8 {
     const justified_checkpoint = if (data.target.epoch == current_epoch)
         &root_cache.current_justified_checkpoint
@@ -163,8 +205,20 @@ pub fn getAttestationParticipationStatus(
     const is_matching_target = std.mem.eql(u8, &data.target.root, try root_cache.getBlockRoot(data.target.epoch));
 
     // a timely head is only be set if the target is _also_ matching
-    const is_matching_head =
+    var is_matching_head =
         is_matching_target and std.mem.eql(u8, &data.beacon_block_root, try root_cache.getBlockRootAtSlot(data.slot));
+
+    if (comptime fork.gte(.gloas)) {
+        const same_slot = try isAttestationSameSlotRootCache(fork, root_cache, data);
+        if (same_slot) {
+            if (data.index != 0) return error.SameSlotAttestationMustIndicateEmptyPayload;
+        } else {
+            if (data.index > 1) return error.InvalidAttestationPayloadIndex;
+            const parent = parent_slot orelse try root_cache.state.latestBlockHeaderSlot();
+            var availability = try root_cache.state.inner.getReadonly("execution_payload_availability");
+            is_matching_head = is_matching_head and ((data.index == 1) == try availability.get(parent % preset.SLOTS_PER_HISTORICAL_ROOT));
+        }
+    }
 
     var flags: u8 = 0;
     if (is_matching_source and inclusion_delay <= SLOTS_PER_EPOCH_SQRT) flags |= TIMELY_SOURCE;
@@ -175,4 +229,8 @@ pub fn getAttestationParticipationStatus(
 
 pub fn checkpointValueEquals(cp1: *const Checkpoint, cp2: *const Checkpoint) bool {
     return cp1.epoch == cp2.epoch and std.mem.eql(u8, &cp1.root, &cp2.root);
+}
+
+test {
+    _ = @import("process_attestation_altair_test.zig");
 }

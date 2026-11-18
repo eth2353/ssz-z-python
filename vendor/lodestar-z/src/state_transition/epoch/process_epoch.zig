@@ -2,6 +2,8 @@ const std = @import("std");
 const metrics = @import("../metrics.zig");
 const observeEpochTransitionStep = metrics.observeEpochTransitionStep;
 const time = @import("time");
+const processBuilderPendingPayments = @import("process_builder_pending_payments.zig").processBuilderPendingPayments;
+const processPtcWindow = @import("process_ptc_window.zig").processPtcWindow;
 
 const ForkSeq = @import("config").ForkSeq;
 const BeaconConfig = @import("config").BeaconConfig;
@@ -26,7 +28,6 @@ const processParticipationFlagUpdates = @import("./process_participation_flag_up
 const processSyncCommitteeUpdates = @import("./process_sync_committee_updates.zig").processSyncCommitteeUpdates;
 const processProposerLookahead = @import("./process_proposer_lookahead.zig").processProposerLookahead;
 const startProposerLookaheadShuffling = @import("./process_proposer_lookahead.zig").startProposerLookaheadShuffling;
-const Node = @import("persistent_merkle_tree").Node;
 
 pub fn processEpoch(
     comptime fork: ForkSeq,
@@ -47,7 +48,7 @@ pub fn processEpoch(
 
     if (comptime fork.gte(.altair)) {
         timer = time.start(io);
-        try processInactivityUpdates(fork, allocator, config, epoch_cache, state, cache);
+        try processInactivityUpdates(fork, config, epoch_cache, state, cache);
         try observeEpochTransitionStep(.{ .step = .process_inactivity_updates }, @as(u64, @intCast(time.since(io, timer).nanoseconds)));
     }
 
@@ -65,7 +66,7 @@ pub fn processEpoch(
     try processRewardsAndPenalties(fork, config, epoch_cache, state, cache, slashing_penalties);
     try observeEpochTransitionStep(.{ .step = .process_rewards_and_penalties }, @as(u64, @intCast(time.since(io, timer).nanoseconds)));
 
-    try processEth1DataReset(fork, state, cache);
+    if (comptime fork.lt(.heze)) try processEth1DataReset(fork, state, cache);
 
     if (comptime fork.gte(.electra)) {
         timer = time.start(io);
@@ -75,6 +76,10 @@ pub fn processEpoch(
         timer = time.start(io);
         try processPendingConsolidations(fork, epoch_cache, state, cache);
         try observeEpochTransitionStep(.{ .step = .process_pending_consolidations }, @as(u64, @intCast(time.since(io, timer).nanoseconds)));
+    }
+
+    if (comptime fork.gte(.gloas)) {
+        try processBuilderPendingPayments(fork, allocator, state, epoch_cache);
     }
 
     timer = time.start(io);
@@ -101,7 +106,7 @@ pub fn processEpoch(
 
     if (comptime fork.gte(.altair)) {
         timer = time.start(io);
-        try processSyncCommitteeUpdates(fork, allocator, epoch_cache, state);
+        try processSyncCommitteeUpdates(fork, allocator, io, epoch_cache, state);
         try observeEpochTransitionStep(.{ .step = .process_sync_committee_updates }, @as(u64, @intCast(time.since(io, timer).nanoseconds)));
     }
 
@@ -110,26 +115,7 @@ pub fn processEpoch(
         try processProposerLookahead(fork, allocator, epoch_cache, state, cache);
         try observeEpochTransitionStep(.{ .step = .process_proposer_lookahead }, @as(u64, @intCast(time.since(io, timer).nanoseconds)));
     }
-}
-
-const TestCachedBeaconState = @import("../test_utils/root.zig").TestCachedBeaconState;
-
-test "processEpoch - sanity" {
-    const allocator = std.testing.allocator;
-    const pool_size = 200_000;
-    var pool = try Node.Pool.init(.{ .page_allocator = allocator, .allocator = allocator, .pool_size = pool_size });
-    defer pool.deinit();
-
-    var test_state = try TestCachedBeaconState.init(allocator, &pool, 10_000);
-    defer test_state.deinit();
-
-    try processEpoch(
-        .electra,
-        allocator,
-        std.testing.io,
-        test_state.cached_state.config,
-        test_state.cached_state.epoch_cache,
-        test_state.cached_state.state.castToFork(.electra),
-        test_state.epoch_transition_cache,
-    );
+    if (comptime fork.gte(.gloas)) {
+        try processPtcWindow(fork, allocator, epoch_cache, state, cache);
+    }
 }

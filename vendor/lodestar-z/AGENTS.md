@@ -2,243 +2,195 @@
 
 ## Critical rules
 
-- **Target branch:** `main`.
-- **Pre-push:** run `zig fmt --check .`, `pnpm lint`, and the relevant
-  binding or spec tests before every push.
-- **Bound everything:** avoid recursion, put explicit limits on loops and allocations, fail fast,
-  and assert invariants.
-- **No generated-file edits:** do not manually edit generated spec test files. Regenerate them with
-  the corresponding `zig build run:write_*` step.
-- **Relative imports:** use the `.js` extension in TypeScript ESM imports.
-- **No `any`:** avoid `any` and `as any`; use proper types or a justified Biome suppression.
-- **Follow existing patterns** before introducing new abstractions.
-- **Security reviews:** first surface candidate security-objective violations, then use
-  `THREAT_MODEL.md` to classify them. The model is not an allowlist. Downgrade a candidate only after
-  verifying the applicable trust assumption against the current or planned call path. If code and
-  documentation conflict, report the code behavior and the documentation gap.
-- **Security documentation:** update `THREAT_MODEL.md` only when a change alters a security
-  objective, trust assumption, trust boundary, or supported caller obligation. Document enduring API
-  preconditions beside the owning declaration or module. Implementation changes that preserve these
-  contracts require no security-documentation update.
-- **Test file layout:** a module holds at most one `test` block. A single inline test is fine;
-  a second one means the tests move to a sibling `<module>_test.zig`, wired from the module with
-  `test { _ = @import("<module>_test.zig"); }`. Never mark a declaration `pub` only to relocate a
-  test. `zig build test:tidy` enforces this.
-- **Incremental commits:** after review starts, do not force-push unless a maintainer requests it.
-- **Communication style:** do not use em dashes. Keep communication succinct and human-friendly.
+- **Target branch:** `unstable` (never `stable`)
+- **Pre-push:** run only checks relevant to the change; prefer targeted tests and do not run the full
+  `pnpm test:unit` suite by default
+- **Relative imports:** use `.js` extension in TypeScript ESM imports
+- **No `any`:** avoid `any` / `as any`; use proper types or justified `biome-ignore`
+- **No `lib/` edits:** never edit `packages/*/lib/` — these are build outputs
+- **Follow existing patterns** before introducing new abstractions
+- **Structured logging** with specific error codes (not generic `Error`)
+- **Incremental commits** after review starts — do not force push unless maintainer requests it
+- **Communication style:** DO NOT use `—`. Keep communication succinct and human-friendly. NO AI SLOP VERBOSITY.
+
+## Zig and native bindings
+
+Zig sources live in `src/`, the TypeScript monorepo in `packages/`, and the Node.js
+addon in `bindings/`. Run Zig commands from the repository root.
+`@lodestar/native` uses the root lockfile and shared Lerna version. Run its package commands with `pnpm --filter @lodestar/native`.
+
+- Use Zig 0.16.0.
+- Bound loops and allocations, avoid recursion, assert invariants, and fail fast.
+- Pair allocations with cleanup immediately and cover partial initialization errors.
+- Validate JavaScript-controlled lengths, indexes, encodings, and ownership at NAPI boundaries.
+- Keep JavaScript wrappers and declarations synchronized with native exports.
+- A module has at most one `test` block. Move additional tests to a sibling
+  `<module>_test.zig`, imported from the owning module. Keep private-internal tests inline;
+  never make declarations public solely to move tests. Run `zig build test:tidy`.
+- Do not edit generated spec tests. Regenerate with the corresponding `zig build run:write_*` step.
+- Run `zig fmt --check .`, `zig build test:tidy`, binding lint, and relevant module,
+  binding, or spec tests before pushing Zig or binding changes.
+- Use `pnpm --filter @lodestar/native prepare-mainnet` to rebuild the addon before binding tests.
+  `prepare-minimal` and `prepare-gnosis` select other presets. Do not share one output
+  directory between concurrent builds for different presets.
+- Verify trust assumptions against the actual or planned call path.
+  If code and documentation conflict, report both the behavior and the documentation gap.
+- Document enduring preconditions beside their owning API.
 
 ## Project overview
 
-Lodestar-z is a Zig library that provides consensus modules for
-[Lodestar](https://github.com/ChainSafe/lodestar), the TypeScript Ethereum consensus client. It
-implements performance-critical paths in Zig and exposes them to Node.js through NAPI bindings.
-Major areas include:
+Lodestar is a TypeScript implementation of the Ethereum consensus client
+(beacon node and validator client). It is maintained by ChainSafe Systems
+and serves as:
 
-- SSZ serialization, Merkleization, and tree-backed views
-- Ethereum consensus types and fork-aware state transition
-- BLS cryptography and parallel verification
-- Persistent Merkle trees and hashing
-- Fork choice and beacon-node components
-- ERA file handling
-- Node.js bindings used by Lodestar
-
-Ethereum consensus spec tests are the source of truth for consensus behavior.
+- **Production beacon node** for Ethereum's proof-of-stake consensus layer
+- **Validator client** for stakers running validators
+- **Light client** implementation with browser support
+- **Reference implementation** for TypeScript/JavaScript ecosystem
 
 ## Directory structure
 
-```text
-src/
-  beacon_node/             # Beacon-node components
-  bls/                     # BLS types, verification, and worker pool
-  clock/                   # Slot and epoch clock
-  config/                  # Runtime and network configuration
-  consensus_types/         # Fork-specific Ethereum consensus types
-  constants/               # Protocol constants
-  era/                     # ERA file handling
-  ere_verifier/            # EIP-8025 execution proof verification through ere.zig
-  fork_choice/             # Fork-choice implementation
-  fork_types/              # Type-erased, fork-aware wrappers
-  hashing/                 # SHA-256 and Merkleization
-  persistent_merkle_tree/  # Structural sharing and lazy hashing
-  preset/                  # Mainnet, minimal, and gnosis presets
-  ssz/                     # SSZ types, serialization, and views
-  state_transition/        # Block, epoch, and slot processing
+```
+/packages/
+  api/              # REST API client and server
+  beacon-node/      # Beacon chain node implementation
+  cli/              # Command-line interface
+  config/           # Network configuration (mainnet, sepolia, etc.)
+  db/               # Database abstraction (LevelDB)
+  era/              # Era file handling for historical data
+  fork-choice/      # Fork choice implementation (proto-array)
+  logger/           # Logging utilities
+  params/           # Consensus parameters and presets
+  reqresp/          # libp2p request/response protocol
+  spec-test-util/   # Test harness for consensus spec tests
+  state-transition/ # State transition functions
+  test-utils/       # Shared utilities for testing
+  types/            # SSZ type definitions
+  utils/            # Shared utilities
+  validator/        # Validator client
 
-bindings/
-  napi/                     # Zig NAPI implementation
-  src/                      # JavaScript and TypeScript public API
-  test/                     # Binding tests
-
-bench/                      # Zig and binding benchmarks
-test/
-  fuzz/                     # Fuzz harnesses and corpora
-  int/                      # Integration tests
-  spec/                     # Consensus, SSZ, and BLS spec tests
-examples/                   # Example programs
-scripts/                    # Zig maintenance and download tools
+/bindings/         # Zig NAPI bindings, wrappers, and binding tests
+/configs/          # Network configuration files
+/docs/             # Documentation source
+/scripts/          # Build and release scripts
+/dashboards/       # Grafana dashboard JSON files
 ```
 
 ## Build commands
 
-The repository uses Zig 0.16.0 and pnpm 10.x.
-
-### Zig library
-
-```bash
-# Build all default artifacts
-zig build
-
-# Check Zig formatting
-zig fmt --check .
-
-# Format Zig files
-zig fmt .
-
-# Run repo-wide lint rules that `zig fmt` cannot express
-zig build test:tidy
-
-# Run all unit tests
-zig build test
-
-# Run one module's tests
-zig build test:ssz
-zig build test:bls
-zig build test:state_transition
-
-# Filter a module test
-zig build test:ssz -Dtest:ssz.filters="test name"
-
-# Filter the aggregate test step
-zig build test -- --test-filter "test name"
-```
-
-Prefer a targeted module test while iterating, do not run `zig build test` unless necessary.
-
-### Spec tests
-
-```bash
-# Download vectors pinned by build.zig.zon
-zig build run:download_spec_tests
-
-# Generate test sources
-zig build run:write_spec_tests
-zig build run:write_ssz_generic_spec_tests
-zig build run:write_ssz_static_spec_tests
-zig build run:write_bls_spec_tests
-
-# Run generated suites
-zig build test:spec_tests -Dpreset=minimal
-zig build test:ssz_generic_spec_tests -Dpreset=minimal
-zig build test:ssz_static_spec_tests -Dpreset=minimal
-zig build test:bls_spec_tests -Dpreset=minimal
-
-# Filter a suite
-zig build test:spec_tests -Dtest:spec_tests.filters="pattern" -Dpreset=minimal
-```
-
-Use the minimal preset for faster iteration, but run mainnet when behavior depends on preset values.
-Do not assume minimal and mainnet constants are interchangeable.
-
-### ere verifier fixtures
-
-The execution-proof-verifier binding test verifies ere's own fixture proofs when the fixtures are present;
-ere.zig covers the same proofs at the library level:
-
-```bash
-zig build run:download_ere_fixtures
-pnpm test
-```
-
-### JavaScript and TypeScript bindings
+All commands use `pnpm` as the package manager.
 
 ```bash
 # Install dependencies
+npm install -g corepack # Node.js 26 no longer bundles it
+corepack enable
 pnpm install
 
-# Build bindings
-zig build build-lib:bindings
-zig build build-lib:bindings -Doptimize=ReleaseSafe
+# Build all packages
+pnpm build
 
-# Build for a specific preset through package scripts
-pnpm prepare-mainnet
-pnpm prepare-minimal
-pnpm prepare-gnosis
+# Build a specific package (faster iteration)
+pnpm --filter @lodestar/beacon-node build
 
-# Run binding tests
-pnpm test
-
-# Run Biome
+# Run linter (biome)
 pnpm lint
-pnpm exec biome check --write .
+
+# Fix lint issues automatically
+pnpm lint:fix
+
+# Type check all packages
+pnpm check-types
+
+# Type check a specific package
+pnpm --filter @lodestar/beacon-node check-types
+
+# Run unit tests (fast, minimal preset)
+pnpm test:unit
+
+# Run specific test file with project filter
+pnpm vitest run --project unit test/unit/path/to/test.test.ts
+
+# Run tests matching a pattern
+pnpm vitest run --project unit -t "pattern"
+
+# Run spec tests (requires downloading first)
+pnpm download-spec-tests
+pnpm test:spec
+
+# Run a single spec test file (located in packages/beacon-node) from the repository root — use spec-mainnet
+# for the mainnet preset
+pnpm vitest run --project spec-minimal test/spec/presets/transition.test.ts
+
+# Filter spec tests within a file by pyspec test name pattern
+pnpm vitest run --project spec-minimal test/spec/presets/transition.test.ts \
+  -t "transition_with_voluntary_exit_right_after_fork"
+
+# Download nightly artifacts from ethereum/consensus-specs CI instead of a
+# stable release. Useful when testing against unreleased spec changes.
+# Requires GITHUB_TOKEN in the env or a repo-root .env file.
+pnpm download-spec-tests latest                                # latest scheduled master run
+pnpm download-spec-tests 2026-04-14                            # latest successful run on that date
+pnpm download-spec-tests latest <owner>/consensus-specs        # fork
+pnpm download-spec-tests latest <owner>/consensus-specs <ref>  # fork + branch
+
+# Fork-choice compliance tests (model-generated vectors, standalone flow;
+# runs nightly in CI, not per-PR). Same version pin as the spec tests.
+pnpm download-comptests
+pnpm test:comptest
+SPEC_FILTER_FORK=deneb pnpm test:comptest   # single fork (from packages/beacon-node)
+
+# Run e2e tests (requires docker environment)
+./scripts/run_e2e_env.sh start
+pnpm test:e2e
 ```
 
-Binding tests require a compatible `zig-out/lib/bindings.node`; rebuild it after changing Zig NAPI
-code or the selected preset.
-
-### Integration tests and benchmarks
+**Tip:** For faster iteration, run tests from the specific package directory:
 
 ```bash
-# ERA-backed integration tests
-zig build run:download_era_files
-zig build test:int
-
-# Representative benchmarks
-zig build run:bench_ssz_attestation -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_ssz_block -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_ssz_state -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_hashing -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_merkle_node -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_merkle_gindex -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_process_block -Doptimize=ReleaseSafe -Dcpu=baseline
-zig build run:bench_process_epoch -Doptimize=ReleaseSafe -Dcpu=baseline
+cd packages/beacon-node
+pnpm vitest run test/unit/chain/validation/block.test.ts
 ```
 
 ## Code style
 
-### Zig
+Lodestar uses [Biome](https://biomejs.dev/) for linting and formatting TypeScript, Markdown and YAML.
 
-The project style guide is `.gemini/styleguide.md`, a Lodestar-specific adaptation of TigerStyle.
-Important requirements include:
+### General conventions
 
-- Safety, performance, and developer experience, in that order.
-- No recursion. Put a fixed upper bound on work and memory.
-- Assert preconditions, postconditions, and invariants. Test both valid and invalid boundaries.
-- Handle every error and clean up partially initialized resources.
-- Prefer static or startup allocation where appropriate, but do not avoid dynamic allocation
-  blindly.
-- Use explicitly sized integer types for persisted and protocol values.
-- Pass values larger than 16 bytes by `*const` when copying is not intended.
-- Construct large objects in place where practical.
-- Keep allocation and matching cleanup together, separated from surrounding logic by blank lines.
-- Explain why a non-obvious design or safety decision is correct.
-- Name error values `error.Name`, never through their set as `Error.Name` or `MyError.Name`.
-  Declared error sets stay in signatures. `zig build test:tidy` enforces this.
-- Run `zig fmt` on every Zig change.
+- **ES modules**: All code uses ES module syntax (`import`/`export`)
+- **Naming**: `camelCase` for functions/variables, `PascalCase` for classes,
+  `UPPER_SNAKE_CASE` for constants
+- **Quotes**: Use double quotes (`"`) not single quotes
+- **Types**: Prefer explicit types on public APIs and complex functions
+- **No `any` or `as any`**: Do not use `any` type or `as any` assertions to bypass
+  the type system. In production code, find the proper type or interface. In test code,
+  use public APIs rather than accessing private fields via `as any`. If genuinely
+  unavoidable, add a suppression with the full rule ID and justification:
+  `// biome-ignore lint/suspicious/noExplicitAny: <reason>`
+- **Private fields**: No underscore prefix (use `private dirty`, not `private _dirty`)
+- **Named exports only**: No default exports
 
-#### Zig 0.16 standard-library names
+### Import organization
 
-Use the current names from the Zig 0.16 standard library. The old aliases below are deprecated:
+Imports are auto-sorted by Biome in this order:
 
-- `std.ArrayListUnmanaged` and `std.ArrayListAligned*` become `std.ArrayList` or
-  `std.array_list.Aligned`.
-- `std.AutoArrayHashMapUnmanaged`, `std.ArrayHashMapUnmanaged`, and
-  `std.StringArrayHashMapUnmanaged` become `std.array_hash_map.Auto`,
-  `std.array_hash_map.Custom`, and `std.array_hash_map.String`.
-- `std.mem.indexOf*` and `std.mem.lastIndexOf*` become the corresponding `find*` functions.
-- Static bit sets use `.empty` and `.full` instead of `initEmpty()` and `initFull()`.
+1. Node.js built-ins
+2. External packages
+3. `@chainsafe/*` and `@lodestar/*` packages
+4. Relative paths
 
-### JavaScript and TypeScript
+In TypeScript source and test files, use `.js` extension for relative ESM imports
+(even though source files are `.ts`). This is required for Node.js ESM resolution.
+This rule does **not** apply to non-TS files (e.g., `package.json`, `.mjs` config).
 
-Bindings use ES modules and Biome:
+```typescript
+// ✅ Correct
+import {something} from "./utils.js";
+import {IBeaconStateView} from "../stateView/interface.js";
 
-- Use double quotes and named exports.
-- Use `.js` extensions for relative TypeScript imports.
-- Use `camelCase` for functions and variables, `PascalCase` for types and classes, and
-  `UPPER_SNAKE_CASE` for constants.
-- Avoid `any` and `as any`. If unavoidable, add a suppression with the full rule and rationale.
-- Keep declarations in `bindings/src/*.d.ts` synchronized with JavaScript wrappers and NAPI exports.
-- Do not edit native binaries under `zig-out/`; they are build outputs.
-
+// ❌ Wrong — will break at runtime
+import {something} from "./utils.ts";
+```
 
 ### Comments
 
@@ -260,238 +212,262 @@ code they govern.
 Prefer a clearer name, a smaller function, or a named constant over a comment explaining unclear
 code. Use `//` for implementation comments and `/** */` JSDoc for public API documentation.
 
-Prefer the active voice over passive voice. For example, instead of:
+### Metrics
 
-```
-Invalid cryptographic inputs return false; Malformed inputs throw an error.
-```
+Metrics are critical for production monitoring:
 
-Prefer:
-
-```
-/// Returns false on cryptographic failure. Throws for malformed inputs.
-```
-
+- Follow [Prometheus naming conventions](https://prometheus.io/docs/practices/naming/)
+- Always suffix metric names with units: `_seconds`, `_bytes`, `_total`
+- Do NOT suffix code variables with units (no `Sec` suffix)
+- Time-based metrics must use seconds
 
 ## Architecture patterns
 
 ### Fork-aware code
 
-Fork progression is:
+Code that varies by fork uses fork guards and type narrowing:
 
-`phase0` -> `altair` -> `bellatrix` -> `capella` -> `deneb` -> `electra` -> `fulu` ->
-`gloas` -> `heze`
+```typescript
+import {isForkPostElectra, isForkPostFulu} from "@lodestar/params";
 
-Keep fork-specific types and logic in the corresponding namespace or module. Use existing fork
-guards and `Any*` wrappers instead of unchecked casts. Changes to a fork generally apply to later
-forks unless the consensus specification explicitly overrides them.
-
-### Presets and configuration
-
-- Compile-time protocol values live in `src/preset/` and `src/constants/`.
-- Runtime chain configuration lives in `src/config/`.
-- Both mainnet and minimal must compile and pass their relevant tests.
-- Size stack buffers and fixed collections from protocol constants only when the input is guaranteed
-  to have that protocol bound. Public binding inputs need explicit validation or a dynamic fallback.
-
-### SSZ types
-
-SSZ definitions are compile-time namespaces that expose the value type, default value,
-serialization, deserialization, hash-tree-root, and view operations. Match the existing fixed versus
-variable type distinction and preserve canonical SSZ limits. For consensus changes, update types,
-fork wrappers, and spec test generation together as needed.
-
-### Memory and ownership
-
-Zig code must make allocator and ownership boundaries explicit:
-
-- Pair every allocation with `defer` or `errdefer` immediately.
-- Clean up all successfully initialized elements when initialization fails partway through.
-- Do not free through a different allocator than the one used to allocate.
-- Treat NAPI values and slices as scoped to the environment and callback rules documented by zapi.
-- Avoid retaining pointers into growable collections across operations that may reallocate them.
-- Prefer bounded stack buffers only when their worst-case size is safe for every calling context.
-
-### NAPI bindings
-
-- Zig exports are implemented under `bindings/napi/`.
-- Public JavaScript wrappers and declarations live under `bindings/src/`.
-- Keep errors at the boundary specific and stable.
-- Validate untrusted JavaScript lengths, indexes, and byte encodings before native access.
-- Account for worker teardown and Node.js worker isolation when changing global native state.
-
-## Testing guidelines
-
-- Tests must be deterministic and bounded.
-- Add regression tests for bug fixes where the failure can be reproduced reliably.
-- Test positive and negative boundaries, especially lengths, indexes, serialization offsets, and
-  partial initialization.
-- Use `std.testing.allocator` in unit tests to detect leaks.
-- Prefer exact error assertions over accepting any failure.
-- Run the narrowest relevant test during development and the complete affected module before push.
-- Run consensus spec tests for consensus types, SSZ behavior, or state-transition changes.
-- Run both minimal and mainnet tests when preset-dependent limits or behavior change.
-- Build and run binding tests for changes under `bindings/` or exported native APIs.
-- Fuzz parsers, deserializers, and cryptographic boundaries when introducing new input shapes.
-
-### Test file layout
-
-Keep tests beside the code they cover without letting them crowd it out.
-
-- A module holds at most one `test` block. One inline test is a usage example and stays put; a
-  second one makes it a suite, and suites live in a sibling `<module>_test.zig`. A module is
-  therefore either inline (one test) or extracted (only the wiring block), never both.
-- Name the test file after its module in snake_case. `slot_math.zig` pairs with
-  `slot_math_test.zig`, and `Node.zig` pairs with `node_test.zig`.
-- Wire the import from the module under test, not from the package `root.zig`:
-
-```zig
-// slot_math.zig
-test {
-    _ = @import("slot_math_test.zig");
+// Check fork before accessing fork-specific fields
+if (isForkPostElectra(fork)) {
+  // electra and later forks
 }
 ```
 
-  Keeping the import local means the pairing survives moving or deleting the module, and no
-  package root has to be updated.
-- Move only the tests. Leave the test bodies unchanged and rebuild the prelude they relied on in
-  the new file as imports and aliases.
-- Private test helpers move with the tests they serve.
-- Do not widen a declaration to `pub` only to relocate a test. Tests that exercise private
-  internals stay inline.
-- Prefix memory safety regression test names with `memory_safety: ` and keep them in the sibling
-  test file for the module they cover.
-- Tests covering a whole package belong in `root_test.zig`, wired from the package `root.zig`.
+The fork progression is: `phase0` → `altair` → `bellatrix` → `capella` →
+`deneb` → `electra` → `fulu` → `gloas`.
+
+### Configuration
+
+`ChainForkConfig` combines base chain config with computed fork information:
+
+```typescript
+// Access config values
+config.SLOTS_PER_EPOCH; // from params
+config.getForkName(slot); // computed fork for a slot
+config.getForkTypes(fork); // SSZ types for a fork
+```
+
+`@lodestar/params` holds constants (`SLOTS_PER_EPOCH`, etc.).
+`@lodestar/config` holds runtime chain configuration.
+
+### State access
+
+- Get current state via `chain.getHeadState()` — returns a tree-backed state
+- **Never hold references to old states** — they consume memory and can go stale
+- For read-only access, use the state directly; for mutations, use `state.clone()`
+- Beacon state is tree-backed (persistent data structure), making cloning cheap
+
+### SSZ types
+
+Types use `@chainsafe/ssz` and come in two forms:
+
+- **Value types**: Plain JS objects. Easy to work with, higher memory usage.
+- **View/ViewDU types**: Tree-backed. Memory-efficient, used for beacon state.
+
+```typescript
+// Type definition
+const MyContainer = new ContainerType(
+  {
+    field1: UintNum64,
+    field2: Root,
+  },
+  {typeName: "MyContainer"}
+);
+
+// Value usage
+const value = MyContainer.defaultValue();
+value.field1 = 42;
+
+// View usage (tree-backed)
+const view = MyContainer.toViewDU(value);
+view.field1 = 42;
+view.commit();
+```
+
+### Fork choice
+
+The fork choice store uses proto-array for efficient head computation:
+
+- `getHead()` returns a **cached** `ProtoBlock` — may be stale after mutations
+- After modifying proto-array node state (e.g., execution status), call
+  `recomputeForkChoiceHead()` to refresh the cache
+- This applies to any code that modifies proto-array outside normal block import
+
+### Logging
+
+Use structured logging with metadata objects:
+
+```typescript
+this.logger.debug("Processing block", {slot, root: toRootHex(root)});
+this.logger.warn("Peer disconnected", {peerId: peer.toString(), reason});
+```
+
+- Prefer structured fields over string concatenation
+- Use appropriate levels: `error` > `warn` > `info` > `verbose` > `debug` > `trace`
+- Include relevant context (slot, root, peer) as structured fields
+
+## Testing guidelines
+
+### Test organization
+
+Tests live alongside source code in `test/` directories:
+
+```
+packages/beacon-node/
+  src/
+  test/
+    unit/           # Unit tests
+    e2e/            # End-to-end tests
+    perf/           # Performance benchmarks
+    spec/           # Consensus spec tests
+```
+
+### Test requirements
+
+- Tests must be deterministic (no external live resources)
+- Do not pull from external APIs (run local nodes instead)
+- Use pinned Docker tags and git commits (not branches)
+- Add assertion messages for loops or repeated assertions:
+
+```typescript
+for (const block of blocks) {
+  expect(block.status).equals("processed", `wrong status for block ${block.slot}`);
+}
+```
+
+### Running specific tests
+
+See **Build commands** above for all test invocations. Use `--project unit`
+for targeted runs and `LODESTAR_PRESET=minimal` for faster spec tests.
 
 ## Pull request guidelines
 
-### Branches and commits
+### Branch naming
 
-Create branches from `main`. Use Conventional Commit messages:
+If contributing from the main repository:
 
-- `feat:` new functionality
-- `fix:` bug fixes
-- `refactor:` behavior-preserving code changes
-- `perf:` performance improvements
-- `test:` test-only changes
-- `docs:` documentation changes
-- `chore:` maintenance
-
-Keep commits focused. After review begins, add incremental commits rather than rewriting history
-unless a maintainer asks otherwise.
-
-### Titles and descriptions
-
-Title: conventional-commit prefix, then an imperative subject of about four words, lowercase, no
-period. `refactor: extract tests to _test.zig`.
-
-Description: use the Lodestar template and scale the detail to the change.
-
-```markdown
-**Motivation**
-
-The problem, at whatever length it needs. Quote the error or log, link the issue or discussion.
-
-**Description**
-
-One sentence saying what this does.
-
-- Change, named by identifier
-  - detail
-
-TODO:
-- follow-up, if any
-
-**AI Assistance Disclosure**
-
-One line.
+```
+username/short-description
 ```
 
-- Motivation is never empty. It states the problem at whatever length the problem needs, and
-  links the issue, review comment, or discussion it came from.
-- Quote the evidence: the error, the log, the command output, in a code block. Long output goes in
-  a `<details>` block.
-- Description length tracks the diff. A one-line fix gets a sentence; a larger change can use
-  bullets, tables, or short subsections to explain behavior and relevant evidence.
-- Bullets name concrete changes by identifier in backticks.
-- Use tables or short subsections when they make before/after behavior, tradeoffs, or validation
-  easier to review. Use text or code blocks instead of screenshots of text.
-- Put the main rationale in Motivation. Include design constraints and validation evidence in
-  Description when they help reviewers assess the change; link CI instead of repeating routine output.
-- Do not list example files to illustrate a point.
-- Code blocks are for real output or a before/after of an interface, never for explaining a
-  concept.
+### Commit messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` new features
+- `fix:` bug fixes
+- `refactor:` code changes that don't add features or fix bugs
+- `perf:` performance improvements
+- `test:` adding or updating tests
+- `chore:` maintenance tasks
+- `docs:` documentation changes
+
+Examples:
+
+```
+feat: add lodestar prover for execution api
+fix: ignore known block in publish blinded block flow
+refactor(reqresp)!: support byte based handlers
+```
 
 ### AI assistance disclosure
 
-Disclose AI assistance in the PR description, following Lodestar's convention. State whether the
-implementation was primarily AI-authored or whether AI was used only for codebase exploration.
+**Required**: Disclose any AI assistance in your PR description:
 
-### Pre-push checklist
+```
+> This PR was written primarily by Claude Code.
+> I consulted Claude Code to understand the codebase, but the solution
+> was fully authored manually by myself.
+```
 
-1. `zig fmt --check .`
-2. `zig build test:tidy`
-3. Run relevant tests, never run slow `zig build test` unless changes touch spec logic
-4. Relevant spec tests for consensus, SSZ, or BLS changes
-5. `pnpm lint` for binding source changes
-6. Rebuild bindings and run `pnpm test` for binding or NAPI changes
-7. Confirm no generated test source or build output was edited manually
-8. Confirm both ownership cleanup and error paths are covered
+### PR etiquette
+
+- Keep PRs as drafts until ready for review
+- Avoid force push after review starts unless a maintainer requests it (use incremental commits)
+- Flag stale PRs to maintainers rather than letting them sit indefinitely
+- Respond to review feedback promptly — reply to every comment, including bot reviewers
+- When updating based on feedback, respond in-thread to acknowledge
+
+## Pre-push checklist
+
+Before pushing any commit, run only the checks relevant to the changed files and behavior:
+
+1. `pnpm lint` — when changing files covered by Biome
+2. `pnpm check-types` — when changing TypeScript, public APIs, or types
+3. Targeted tests for the changed behavior, when applicable. Do not run the full `pnpm test:unit` suite
+   by default; reserve it for broad changes that cannot be covered adequately by targeted tests or when
+   explicitly requested
+4. No edits in `packages/*/lib/` — these are build outputs; edit `src/` instead
 
 ## Common tasks
 
+### Adding a new feature
+
+1. Create a feature branch from `unstable`
+2. Implement the feature with tests
+3. Run `pnpm lint` and `pnpm check-types` when applicable
+4. Run the targeted tests for the feature
+5. Open PR with clear description and any AI disclosure
+
 ### Fixing a bug
 
-1. Add a failing regression test when practical.
-2. Identify the violated invariant or missing boundary check.
-3. Fix the bug and all partial-failure cleanup paths.
-4. Run the affected module tests.
-5. Run spec or binding tests when the changed boundary requires them.
+1. Write a failing test that reproduces the bug
+2. Fix the bug
+3. Verify the test passes
+4. Run targeted tests for the affected area, plus `pnpm lint` and `pnpm check-types` when applicable
 
-### Adding or changing a consensus type
+### Adding a new SSZ type
 
-1. Update the type in the relevant `src/consensus_types/<fork>.zig` file.
-2. Propagate it through later forks and `src/fork_types/` where required.
-3. Update state-transition logic that consumes the type.
-4. Regenerate the relevant spec tests.
-5. Run minimal and mainnet spec suites.
+1. Add the type definition in the relevant fork file (e.g., `packages/types/src/phase0/sszTypes.ts`)
+2. Export the new type from that file's `ssz` object
+3. The type will be automatically aggregated (no central `sszTypes` to modify)
+4. Run `pnpm check-types` to verify
 
-### Adding a NAPI API
+### Adding a new API endpoint
 
-1. Implement the native export under `bindings/napi/`.
-2. Register it through the existing zapi export pattern.
-3. Add or update the wrapper and declaration under `bindings/src/`.
-4. Validate all JavaScript-controlled inputs at the native boundary.
-5. Add tests under `bindings/test/`.
-6. Build ReleaseSafe bindings and run `pnpm test` and `pnpm lint`.
+1. Define the route in `packages/api/src/beacon/routes/<resource>.ts`
+2. Add request/response SSZ codecs alongside the route definition
+3. Implement the server handler in `packages/beacon-node/src/api/impl/beacon/<resource>.ts`
+4. Add tests for the new endpoint
+5. Reference the [Beacon APIs spec](https://github.com/ethereum/beacon-APIs) for the endpoint contract
 
-### Changing SSZ behavior
+## Style learnings from reviews
 
-1. Locate the fixed, variable, serialized, and tree-view paths affected by the change.
-2. Preserve canonical limits and offset validation.
-3. Add unit tests for valid values and malformed boundary cases.
-4. Regenerate and run generic or static SSZ spec tests.
-5. Fuzz the changed parser or deserializer when applicable.
+- **Prefer inline logic** over single-use helper functions for simple checks
+- **Match existing patterns** in the file you're modifying (comments, structure)
+- **Use specific error codes** (`BlockErrorCode.PARENT_UNKNOWN`) over generic `Error`
+- **Handle undefined** explicitly: `config.directPeers ?? []`, `value?.trim() ?? ""`
 
-## Implementing consensus specifications
+## Implementing consensus specs
 
-The primary reference is the
-[Ethereum consensus-specs repository](https://github.com/ethereum/consensus-specs). The test version
-is pinned in `build.zig.zon`; reference that exact version when implementation details differ from
-upstream `master`.
+The primary reference for implementing consensus specs is the
+[Ethereum consensus-specs repository](https://github.com/ethereum/consensus-specs).
+Additionally, [eth2book.info](https://eth2book.info) is a valuable resource for
+understanding phase0, altair, bellatrix, and capella specs and how the spec
+evolved over time (though no longer actively maintained).
 
-Typical mappings are:
+When implementing changes from the consensus specs, the mapping is typically:
 
-| Consensus specification area | Lodestar-z location |
-| --- | --- |
-| SSZ containers and fork types | `src/consensus_types/`, `src/fork_types/` |
-| Block processing | `src/state_transition/block/` |
-| Epoch processing | `src/state_transition/epoch/` |
-| Slot processing | `src/state_transition/slot/` |
-| Fork choice | `src/fork_choice/` |
-| Hashing and Merkleization | `src/hashing/`, `src/persistent_merkle_tree/`, `src/ssz/` |
-| Node.js integration | `bindings/napi/`, `bindings/src/` |
+| Spec Document                | Lodestar Package                             |
+| ---------------------------- | -------------------------------------------- |
+| beacon-chain.md (containers) | `@lodestar/types`                            |
+| beacon-chain.md (functions)  | `@lodestar/state-transition`                 |
+| p2p-interface.md             | `@lodestar/beacon-node` (networking, gossip) |
+| validator.md                 | `@lodestar/validator`                        |
+| fork-choice.md               | `@lodestar/fork-choice`                      |
 
-When porting Lodestar behavior, preserve consensus semantics rather than TypeScript implementation
-details. Use the spec vectors to verify equivalence and document intentional differences caused by
-Zig ownership, bounded memory, or NAPI constraints.
+### Fork organization
+
+Forks follow the progression defined in **Architecture patterns > Fork-aware code** above.
+
+- **@lodestar/types/src/** - Each fork has its own directory with SSZ type definitions
+- **@lodestar/state-transition/src/block/** - Block processing functions
+  (e.g., `processAttestations`, `processDeposit`, `processWithdrawals`)
+- **@lodestar/state-transition/src/epoch/** - Epoch processing functions
+- **@lodestar/state-transition/src/slot/** - Slot processing functions
+
+The `specrefs/` directory contains pinned consensus spec versions.
+When implementing spec changes, reference the exact spec version.

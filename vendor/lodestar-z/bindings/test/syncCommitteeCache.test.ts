@@ -85,17 +85,17 @@ describe("sync committee cache bindings", () => {
     expectCache(state.getIndexedSyncCommittee(state.slot + 1), 2, 3, nextPositions);
   });
 
-  it.each([
-    nextPeriodEpoch - epochsPerPeriod - 1,
-    nextPeriodEpoch + epochsPerPeriod,
-  ])("preserves unavailable committee errors for epoch %s", (epoch) => {
-    expect(() => state.getIndexedSyncCommitteeAtEpoch(epoch)).toThrowError(
-      expect.objectContaining({code: "NO_SYNC_COMMITTEE"})
-    );
-    expect(() => state.getIndexedSyncCommittee(epoch * slotsPerEpoch)).toThrowError(
-      expect.objectContaining({code: "NO_SYNC_COMMITTEE"})
-    );
-  });
+  it.each([nextPeriodEpoch - epochsPerPeriod - 1, nextPeriodEpoch + epochsPerPeriod])(
+    "preserves unavailable committee errors for epoch %s",
+    (epoch) => {
+      expect(() => state.getIndexedSyncCommitteeAtEpoch(epoch)).toThrowError(
+        expect.objectContaining({code: "NO_SYNC_COMMITTEE"})
+      );
+      expect(() => state.getIndexedSyncCommittee(epoch * slotsPerEpoch)).toThrowError(
+        expect.objectContaining({code: "NO_SYNC_COMMITTEE"})
+      );
+    }
+  );
 
   it.each([-1, 1.5])("preserves invalid numeric input errors for %s", (value) => {
     expect(() => state.getIndexedSyncCommitteeAtEpoch(value)).toThrowError(

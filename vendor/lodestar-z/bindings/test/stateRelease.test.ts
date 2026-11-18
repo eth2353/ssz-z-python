@@ -36,7 +36,7 @@ function runProcess(scenario: ReleaseScenario, exposeGc = false): void {
       scenario,
     ],
     {
-      cwd: new URL("../../", import.meta.url),
+      cwd: new URL("../", import.meta.url),
       encoding: "utf8",
       env: {...process.env, LODESTAR_Z_NODE_POOL_CAPACITY: "500000", NODE_OPTIONS: ""},
       timeout: 30_000,

@@ -18,7 +18,7 @@ pub const header =
     \\// Do not commit changes by hand.
     \\
     \\const std = @import("std");
-    \\const Node = @import("persistent_merkle_tree").Node;
+    \\const test_case = @import("../test_case.zig");
     \\const ForkSeq = @import("config").ForkSeq;
     \\const active_preset = @import("preset").active_preset;
     \\const spec_test_options = @import("spec_test_options");
@@ -32,17 +32,21 @@ pub const header =
 
 const test_template =
     \\test "{s} random {s} {s}" {{
-    \\    var pool = try Node.Pool.init(.{{ .page_allocator = allocator, .allocator = allocator, .pool_size = pool_size }});
-    \\    defer pool.deinit();
+    \\    const pool = try test_case.acquirePool(allocator, pool_size);
+    \\    defer test_case.releasePool();
     \\    const test_dir_name = try std.fs.path.join(allocator, &[_][]const u8{{
     \\        spec_test_options.spec_test_out_dir,
     \\        spec_test_options.spec_test_version,
     \\        @tagName(active_preset) ++ "/tests/" ++ @tagName(active_preset) ++ "/{s}/random/{s}/pyspec_tests/{s}",
     \\    }});
     \\    defer allocator.free(test_dir_name);
-    \\    const test_dir = std.Io.Dir.openDir(.cwd(), std.testing.io, test_dir_name, .{{}}) catch return error.SkipZigTest;
+    \\    const test_dir = std.Io.Dir.openDir(.cwd(), std.testing.io, test_dir_name, .{{}}) catch |err| switch (err) {{
+    \\        error.FileNotFound => return error.SkipZigTest,
+    \\        else => return err,
+    \\    }};
+    \\    defer test_dir.close(std.testing.io);
     \\
-    \\    try Sanity.BlocksTestCase(.{s}).execute(allocator, &pool, test_dir);
+    \\    try Sanity.BlocksTestCase(.{s}).execute(allocator, pool, test_dir);
     \\}}
     \\
     \\

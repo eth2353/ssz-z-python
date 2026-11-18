@@ -16,7 +16,7 @@ function runProcess(scenario: PoolScenario, capacity = "10000000"): void {
     process.execPath,
     ["--import", "tsx", fileURLToPath(new URL("./fixtures/poolInitialization.ts", import.meta.url)), scenario],
     {
-      cwd: new URL("../../", import.meta.url),
+      cwd: new URL("../", import.meta.url),
       encoding: "utf8",
       env: {...process.env, LODESTAR_Z_NODE_POOL_CAPACITY: capacity, NODE_OPTIONS: ""},
       timeout: 20_000,

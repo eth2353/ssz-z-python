@@ -8,6 +8,8 @@ const upgradeStateToCapella = state_transition.upgradeStateToCapella;
 const upgradeStateToDeneb = state_transition.upgradeStateToDeneb;
 const upgradeStateToElectra = state_transition.upgradeStateToElectra;
 const upgradeStateToFulu = state_transition.upgradeStateToFulu;
+const upgradeStateToGloas = state_transition.upgradeStateToGloas;
+const upgradeStateToHeze = state_transition.upgradeStateToHeze;
 const TestCachedBeaconState = state_transition.test_utils.TestCachedBeaconState;
 const AnyBeaconState = @import("fork_types").AnyBeaconState;
 const test_case = @import("../test_case.zig");
@@ -28,7 +30,7 @@ const Allocator = std.mem.Allocator;
 pub fn TestCase(comptime target_fork: ForkSeq) type {
     comptime {
         switch (target_fork) {
-            .altair, .bellatrix, .capella, .deneb, .electra, .fulu => {},
+            .altair, .bellatrix, .capella, .deneb, .electra, .fulu, .gloas, .heze => {},
             else => @compileError("fork tests are not defined for " ++ @tagName(target_fork)),
         }
     }
@@ -45,10 +47,10 @@ pub fn TestCase(comptime target_fork: ForkSeq) type {
 
         pub fn execute(allocator: Allocator, dir: std.Io.Dir) !void {
             const pool_size = if (active_preset == .mainnet) 10_000_000 else 1_000_000;
-            var pool = try Node.Pool.init(.{ .page_allocator = allocator, .allocator = allocator, .pool_size = pool_size });
-            defer pool.deinit();
+            const pool = try test_case.acquirePool(allocator, pool_size);
+            defer test_case.releasePool();
 
-            var tc = try Self.init(allocator, &pool, dir);
+            var tc = try Self.init(allocator, pool, dir);
             defer {
                 tc.deinit();
                 state_transition.deinitReusedEpochTransitionCache();
@@ -86,10 +88,7 @@ pub fn TestCase(comptime target_fork: ForkSeq) type {
                 try expectEqualBeaconStates(expected, self.pre.cached_state.state);
             } else {
                 self.upgrade() catch |err| {
-                    if (err == error.SkipZigTest) {
-                        return err;
-                    }
-                    return;
+                    return test_case.expectConsensusInvalid(err);
                 };
                 return error.ExpectedError;
             }
@@ -103,6 +102,7 @@ pub fn TestCase(comptime target_fork: ForkSeq) type {
                 .altair => {
                     const upgraded = try upgradeStateToAltair(
                         self.pre.allocator,
+                        std.testing.io,
                         config,
                         epoch_cache,
                         try cached_state.state.tryCastToFork(.phase0),
@@ -153,6 +153,24 @@ pub fn TestCase(comptime target_fork: ForkSeq) type {
                     );
                     cached_state.state.* = .{ .fulu = upgraded.inner };
                 },
+                .gloas => {
+                    const upgraded = try upgradeStateToGloas(
+                        self.pre.allocator,
+                        std.testing.io,
+                        config,
+                        epoch_cache,
+                        try cached_state.state.tryCastToFork(.fulu),
+                    );
+                    cached_state.state.* = .{ .gloas = upgraded.inner };
+                },
+                .heze => {
+                    const upgraded = try upgradeStateToHeze(
+                        self.pre.allocator,
+                        config,
+                        try cached_state.state.tryCastToFork(.gloas),
+                    );
+                    cached_state.state.* = .{ .heze = upgraded.inner };
+                },
                 else => unreachable,
             }
         }
@@ -183,6 +201,8 @@ fn previousFork(target: ForkSeq) ForkSeq {
         .deneb => .capella,
         .electra => .deneb,
         .fulu => .electra,
+        .gloas => .fulu,
+        .heze => .gloas,
         else => @compileError("Unsupported fork transition for " ++ @tagName(target)),
     };
 }

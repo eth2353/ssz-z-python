@@ -236,7 +236,7 @@ fn ProcessBlockRootBench(comptime fork: ForkSeq, comptime opts: BenchOpts) type 
                 external_data,
                 .{ .verify_signature = opts.verify_signature },
             ) catch unreachable;
-            _ = BenchState.cloned_cached_state.state.hashTreeRoot() catch unreachable;
+            _ = BenchState.cloned_cached_state.state.hashTreeRootParallel(self.io) catch unreachable;
         }
     };
 }
@@ -375,13 +375,15 @@ fn ProcessBlockSegmentedBench(comptime fork: ForkSeq) type {
             ) catch unreachable;
             recordSegment(.randao, @as(u64, @intCast(time.since(io, randao_start).nanoseconds)));
 
-            const eth1_start = time.start(io);
-            state_transition.processEth1Data(
-                fork,
-                state,
-                self.body.eth1Data(),
-            ) catch unreachable;
-            recordSegment(.eth1_data, @as(u64, @intCast(time.since(io, eth1_start).nanoseconds)));
+            if (comptime fork.lt(.heze)) {
+                const eth1_start = time.start(io);
+                state_transition.processEth1Data(
+                    fork,
+                    state,
+                    self.body.eth1Data(),
+                ) catch unreachable;
+                recordSegment(.eth1_data, @as(u64, @intCast(time.since(io, eth1_start).nanoseconds)));
+            }
 
             const ops_start = time.start(io);
             state_transition.processOperations(
@@ -419,7 +421,7 @@ fn ProcessBlockSegmentedBench(comptime fork: ForkSeq) type {
             recordSegment(.commit, @as(u64, @intCast(time.since(io, commit_start).nanoseconds)));
 
             const root_start = time.start(io);
-            _ = BenchState.cloned_cached_state.state.hashTreeRoot() catch unreachable;
+            _ = BenchState.cloned_cached_state.state.hashTreeRootParallel(io) catch unreachable;
             recordSegment(.state_root, @as(u64, @intCast(time.since(io, root_start).nanoseconds)));
 
             recordSegment(.block_total, @as(u64, @intCast(time.since(io, block_start).nanoseconds)));
@@ -562,7 +564,9 @@ fn runBenchmark(
 
     try bench.addParam("randao", &ProcessRandaoBench(fork, .{ .verify_signature = true }){ .block = block, .body = body, .io = io }, .{ .hooks = hooks });
     try bench.addParam("randao_no_sig", &ProcessRandaoBench(fork, .{ .verify_signature = false }){ .block = block, .body = body, .io = io }, .{ .hooks = hooks });
-    try bench.addParam("eth1_data", &ProcessEth1DataBench(fork){ .body = body }, .{ .hooks = hooks });
+    if (comptime fork.lt(.heze)) {
+        try bench.addParam("eth1_data", &ProcessEth1DataBench(fork){ .body = body }, .{ .hooks = hooks });
+    }
     try bench.addParam("operations", &ProcessOperationsBench(fork, .{ .verify_signature = true }){ .body = body, .io = io }, .{ .hooks = hooks });
     try bench.addParam("operations_no_sig", &ProcessOperationsBench(fork, .{ .verify_signature = false }){ .body = body, .io = io }, .{ .hooks = hooks });
 

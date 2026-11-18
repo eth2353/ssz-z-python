@@ -19,44 +19,34 @@ const FixedContainerType = container.FixedContainerType;
 const StructContainerType = container.StructContainerType;
 const VariableContainerType = container.VariableContainerType;
 
-test "ContainerType - sanity" {
-    // create a fixed container type and instance and round-trip serialize
-    const Checkpoint = FixedContainerType(struct {
-        slot: UintType(8),
-        root: ByteVectorType(32),
+test "memory_safety: fixed container serialized hashing should reject invalid lengths" {
+    const ST = FixedContainerType(struct { flag: BoolType(), count: UintType(64) });
+    const encoded = [_]u8{ 1, 0, 0, 0, 0, 0, 0, 0, 0 };
+    var root: [32]u8 = undefined;
+
+    for (0..encoded.len) |length| {
+        try std.testing.expectError(error.InvalidSize, ST.serialized.hashTreeRoot(encoded[0..length], &root));
+    }
+    try std.testing.expectError(error.InvalidSize, ST.serialized.hashTreeRoot(&(encoded ++ .{0}), &root));
+    try ST.serialized.hashTreeRoot(&encoded, &root);
+}
+
+test "memory_safety: variable container serialized hashing should reject invalid lengths" {
+    const ST = VariableContainerType(struct {
+        flag: BoolType(),
+        bytes: FixedListType(UintType(8), 32, .{}),
     });
+    const encoded = [_]u8{ 1, 5, 0, 0, 0 };
+    var root: [32]u8 = undefined;
 
-    var c: Checkpoint.Type = undefined;
-    var c_buf: [Checkpoint.fixed_size]u8 = undefined;
-
-    _ = Checkpoint.serializeIntoBytes(&c, &c_buf);
-    var c_decoded = Checkpoint.default_value;
-    try Checkpoint.deserializeFromBytes(&c_buf, &c_decoded);
-
-    // create a variable container type and instance and round-trip serialize
-    const allocator = std.testing.allocator;
-    const Foo = VariableContainerType(struct {
-        a: FixedListType(UintType(8), 32, .{}),
-        b: FixedListType(UintType(8), 32, .{}),
-        c: FixedListType(UintType(8), 32, .{}),
-    });
-    var f: Foo.Type = undefined;
-    f.a = try std.ArrayList(u8).initCapacity(allocator, 10);
-    f.b = try std.ArrayList(u8).initCapacity(allocator, 10);
-    f.c = try std.ArrayList(u8).initCapacity(allocator, 10);
-    defer f.a.deinit(allocator);
-    defer f.b.deinit(allocator);
-    defer f.c.deinit(allocator);
-    f.a.expandToCapacity();
-    f.b.expandToCapacity();
-    f.c.expandToCapacity();
-
-    const f_buf = try allocator.alloc(u8, Foo.serializedSize(&f));
-    defer allocator.free(f_buf);
-    _ = Foo.serializeIntoBytes(&f, f_buf);
-    var f_decoded = Foo.default_value;
-    defer Foo.deinit(allocator, &f_decoded);
-    try Foo.deserializeFromBytes(allocator, f_buf, &f_decoded);
+    for (0..encoded.len) |length| {
+        try std.testing.expectError(error.InvalidSize, ST.readFieldRanges(encoded[0..length]));
+        try std.testing.expectError(error.InvalidSize, ST.serialized.hashTreeRoot(std.testing.allocator, encoded[0..length], &root));
+    }
+    const oversized = encoded ++ [_]u8{0} ** 33;
+    try std.testing.expectError(error.InvalidSize, ST.readFieldRanges(&oversized));
+    try std.testing.expectError(error.InvalidSize, ST.serialized.hashTreeRoot(std.testing.allocator, &oversized, &root));
+    try ST.serialized.hashTreeRoot(std.testing.allocator, &encoded, &root);
 }
 
 test "clone FixedContainerType" {

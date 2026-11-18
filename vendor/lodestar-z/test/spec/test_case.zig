@@ -1,7 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const yaml = @import("yaml");
 const snappy = @import("snappy").raw;
 const ForkSeq = @import("config").ForkSeq;
+const ChainConfig = @import("config").ChainConfig;
+const active_preset = @import("preset").active_preset;
 const isFixedType = @import("ssz").isFixedType;
 const state_transition = @import("state_transition");
 const Node = @import("persistent_merkle_tree").Node;
@@ -19,6 +22,32 @@ const deneb = types.deneb;
 const electra = types.electra;
 const fulu = types.fulu;
 const gloas = types.gloas;
+const heze = types.heze;
+
+/// Share one pool across tests to avoid reallocating per test case
+var shared_pool: ?Node.Pool = null;
+var shared_pool_idle_nodes: usize = 0;
+
+pub fn acquirePool(allocator: Allocator, pool_size: u32) !*Node.Pool {
+    if (shared_pool == null) {
+        shared_pool = try Node.Pool.init(.{
+            .page_allocator = std.heap.page_allocator,
+            .allocator = allocator,
+            .pool_size = pool_size,
+        });
+        shared_pool_idle_nodes = shared_pool.?.nodes_in_use;
+    }
+    return &shared_pool.?;
+}
+
+/// Drops the pool when a case leaves nodes behind, so every case starts from an empty pool.
+pub fn releasePool() void {
+    if (shared_pool) |*pool| {
+        if (pool.nodes_in_use == shared_pool_idle_nodes) return;
+        pool.deinit();
+        shared_pool = null;
+    }
+}
 
 pub const BlsSetting = enum {
     default,
@@ -45,6 +74,7 @@ pub fn TestCaseUtils(comptime fork: ForkSeq) type {
                 .electra => .deneb,
                 .fulu => .electra,
                 .gloas => .fulu,
+                .heze => .gloas,
                 else => unreachable,
             };
         }
@@ -66,7 +96,9 @@ pub fn TestCaseUtils(comptime fork: ForkSeq) type {
             );
             errdefer pre_state_all_forks.deinit();
 
-            return try TestCachedBeaconState.initFromState(allocator, pool, pre_state_all_forks, fork, fork_epoch);
+            var fixture_config = try loadSpecTestConfig(allocator, dir);
+            defer fixture_config.deinit();
+            return try TestCachedBeaconState.initFromStateWithConfig(allocator, pool, pre_state_all_forks, fork, fork_epoch, fixture_config.overrides);
         }
 
         pub fn loadPreState(allocator: Allocator, pool: *Node.Pool, dir: std.Io.Dir) !TestCachedBeaconState {
@@ -86,7 +118,9 @@ pub fn TestCaseUtils(comptime fork: ForkSeq) type {
 
             var f = try pre_state_all_forks.fork();
             const fork_epoch = try f.get("epoch");
-            return try TestCachedBeaconState.initFromState(allocator, pool, pre_state_all_forks, fork, fork_epoch);
+            var fixture_config = try loadSpecTestConfig(allocator, dir);
+            defer fixture_config.deinit();
+            return try TestCachedBeaconState.initFromStateWithConfig(allocator, pool, pre_state_all_forks, fork, fork_epoch, fixture_config.overrides);
         }
 
         /// consumer should deinit the returned state and destroy the pointer
@@ -111,20 +145,241 @@ pub fn TestCaseUtils(comptime fork: ForkSeq) type {
     };
 }
 
-pub fn loadBlsSetting(allocator: std.mem.Allocator, dir: std.Io.Dir) BlsSetting {
-    const io = std.testing.io;
-    const contents = dir.readFileAlloc(io, "meta.yaml", allocator, .unlimited) catch return .default;
-    defer allocator.free(contents);
+const SpecTestConfig = struct {
+    arena: std.heap.ArenaAllocator,
+    overrides: ChainConfig.OptionalChainConfig,
 
-    if (std.mem.find(u8, contents, "bls_setting: 0") != null) {
-        return .default;
-    } else if (std.mem.find(u8, contents, "bls_setting: 1") != null) {
-        return .required;
-    } else if (std.mem.find(u8, contents, "bls_setting: 2") != null) {
-        return .ignored;
-    } else {
-        return .default;
+    fn deinit(self: *SpecTestConfig) void {
+        self.arena.deinit();
     }
+};
+
+fn loadSpecTestConfig(allocator: Allocator, dir: std.Io.Dir) !SpecTestConfig {
+    const contents = dir.readFileAlloc(std.testing.io, "config.yaml", allocator, .limited(1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return .{ .arena = .init(allocator), .overrides = .{} },
+        else => return err,
+    };
+    defer allocator.free(contents);
+    return parseSpecTestConfig(allocator, contents);
+}
+
+/// Parse scalars as text: converting 0x00000001 to a number would lose fork-version bytes.
+/// Config files also contain networking fields absent from ChainConfig; only known fields
+/// override native configuration, and malformed values of every known field are errors.
+fn parseSpecTestConfig(allocator: Allocator, contents: []const u8) !SpecTestConfig {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const a = arena.allocator();
+    var document = yaml.Yaml{ .source = contents };
+    try document.load(a);
+    if (document.docs.items.len != 1) return error.InvalidSpecConfig;
+    const map = try document.docs.items[0].asMap();
+    var overrides: ChainConfig.OptionalChainConfig = .{};
+    inline for (std.meta.fields(ChainConfig)) |field| {
+        if (map.get(field.name)) |value| {
+            if (comptime std.mem.eql(u8, field.name, "BLOB_SCHEDULE")) {
+                const entries = try value.asList();
+                if (entries.len > 1024) return error.InvalidBlobSchedule;
+                const schedule = try a.alloc(ChainConfig.BlobScheduleEntry, entries.len);
+                for (entries, schedule) |entry, *out| {
+                    const entry_map = try entry.asMap();
+                    if (entry_map.count() != 2) return error.InvalidBlobSchedule;
+                    const epoch = entry_map.get("EPOCH") orelse return error.InvalidBlobSchedule;
+                    const max_blobs = entry_map.get("MAX_BLOBS_PER_BLOCK") orelse return error.InvalidBlobSchedule;
+                    out.* = .{
+                        .EPOCH = try std.fmt.parseInt(u64, try epoch.asScalar(), 0),
+                        .MAX_BLOBS_PER_BLOCK = try std.fmt.parseInt(u64, try max_blobs.asScalar(), 0),
+                    };
+                }
+                @field(overrides, field.name) = schedule;
+            } else {
+                const scalar = try value.asScalar();
+                @field(overrides, field.name) = switch (@typeInfo(field.type)) {
+                    .int => try std.fmt.parseInt(field.type, scalar, 0),
+                    .array => |array| blk: {
+                        comptime std.debug.assert(array.child == u8);
+                        if (scalar.len != 2 + 2 * array.len or !std.mem.startsWith(u8, scalar, "0x")) return error.InvalidConfigBytes;
+                        var bytes: field.type = undefined;
+                        _ = try std.fmt.hexToBytes(&bytes, scalar[2..]);
+                        break :blk bytes;
+                    },
+                    .@"enum" => blk: {
+                        const preset = std.meta.stringToEnum(field.type, scalar) orelse return error.InvalidPreset;
+                        if (preset != active_preset) return error.SpecPresetMismatch;
+                        break :blk preset;
+                    },
+                    .pointer => scalar,
+                    else => @compileError("Unsupported spec config field type: " ++ field.name),
+                };
+            }
+        }
+    }
+    return .{ .arena = arena, .overrides = overrides };
+}
+
+/// execution.yaml describes the execution engine result independently of whether the
+/// consensus operation is valid. An absent post-state must never force an invalid EL result.
+pub fn loadExecutionPayloadStatus(allocator: Allocator, dir: std.Io.Dir) !state_transition.ExecutionPayloadStatus {
+    const contents = try dir.readFileAlloc(std.testing.io, "execution.yaml", allocator, .limited(16 * 1024));
+    defer allocator.free(contents);
+    return parseExecutionPayloadStatus(allocator, contents);
+}
+
+fn parseExecutionPayloadStatus(allocator: Allocator, contents: []const u8) !state_transition.ExecutionPayloadStatus {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var document = yaml.Yaml{ .source = contents };
+    try document.load(arena.allocator());
+    if (document.docs.items.len != 1) return error.InvalidExecutionMetadata;
+    const map = try document.docs.items[0].asMap();
+    const value = map.get("execution_valid") orelse return error.InvalidExecutionMetadata;
+    const scalar = try value.asScalar();
+    if (std.mem.eql(u8, scalar, "true")) return .valid;
+    if (std.mem.eql(u8, scalar, "false")) return .invalid;
+    return error.InvalidExecutionMetadata;
+}
+
+test "spec metadata and negative fixtures reject malformed data and resource failures" {
+    const allocator = std.testing.allocator;
+    const fixture =
+        "PRESET_BASE: '" ++ @tagName(active_preset) ++ "'\n" ++
+        \\CONFIG_NAME: 'fixture-owned'
+        \\GENESIS_FORK_VERSION: 0x00000001
+        \\GLOAS_FORK_VERSION: '0x07000001'
+        \\GLOAS_FORK_EPOCH: 18446744073709551615
+        \\TERMINAL_TOTAL_DIFFICULTY: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+        \\MIN_BUILDER_WITHDRAWABILITY_DELAY: 2
+        \\BLOB_SCHEDULE:
+        \\  - EPOCH: 3
+        \\    MAX_BLOBS_PER_BLOCK: 9
+        \\  - EPOCH: 7
+        \\    MAX_BLOBS_PER_BLOCK: 12
+        \\IGNORED_NETWORK_FIELD: {future: true}
+        ;
+    var parsed = try parseSpecTestConfig(allocator, fixture);
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 1 }, &parsed.overrides.GENESIS_FORK_VERSION.?);
+    try std.testing.expectEqualSlices(u8, &.{ 7, 0, 0, 1 }, &parsed.overrides.GLOAS_FORK_VERSION.?);
+    try std.testing.expectEqual(std.math.maxInt(u64), parsed.overrides.GLOAS_FORK_EPOCH.?);
+    try std.testing.expectEqual(std.math.maxInt(u256), parsed.overrides.TERMINAL_TOTAL_DIFFICULTY.?);
+    try std.testing.expectEqualStrings("fixture-owned", parsed.overrides.CONFIG_NAME.?);
+    try std.testing.expectEqual(@as(usize, 2), parsed.overrides.BLOB_SCHEDULE.?.len);
+    try std.testing.expectEqual(@as(u64, 7), parsed.overrides.BLOB_SCHEDULE.?[1].EPOCH);
+    try std.testing.expectEqual(@as(u64, 12), parsed.overrides.BLOB_SCHEDULE.?[1].MAX_BLOBS_PER_BLOCK);
+    try std.testing.expectEqual(@as(?u64, null), parsed.overrides.ALTAIR_FORK_EPOCH);
+
+    var empty_schedule = try parseSpecTestConfig(allocator, "BLOB_SCHEDULE: []\n");
+    defer empty_schedule.deinit();
+    try std.testing.expectEqual(@as(usize, 0), empty_schedule.overrides.BLOB_SCHEDULE.?.len);
+    try std.testing.expectError(error.InvalidConfigBytes, parseSpecTestConfig(allocator, "GLOAS_FORK_VERSION: 0x1\n"));
+    try std.testing.expectError(error.Overflow, parseSpecTestConfig(allocator, "GLOAS_FORK_EPOCH: 18446744073709551616\n"));
+    try std.testing.expectError(error.TypeMismatch, parseSpecTestConfig(allocator, "MIN_BUILDER_WITHDRAWABILITY_DELAY: []\n"));
+    try std.testing.expectError(error.InvalidBlobSchedule, parseSpecTestConfig(allocator, "BLOB_SCHEDULE: [{EPOCH: 1}]\n"));
+    try std.testing.expectError(error.DuplicateMapKey, parseSpecTestConfig(allocator, "GLOAS_FORK_EPOCH: 1\nGLOAS_FORK_EPOCH: 2\n"));
+
+    const other_preset = if (active_preset == .minimal) "mainnet" else "minimal";
+    try std.testing.expectError(error.SpecPresetMismatch, parseSpecTestConfig(allocator, "PRESET_BASE: " ++ other_preset ++ "\n"));
+    try std.testing.expectEqual(.valid, try parseExecutionPayloadStatus(allocator, "{execution_valid: true}\n"));
+    try std.testing.expectEqual(.invalid, try parseExecutionPayloadStatus(allocator, "execution_valid: false\n"));
+    try std.testing.expectError(error.InvalidExecutionMetadata, parseExecutionPayloadStatus(allocator, "{execution_valid: 1}\n"));
+    try std.testing.expectError(error.InvalidExecutionMetadata, parseExecutionPayloadStatus(allocator, "{}\n"));
+    try std.testing.expectEqual(.default, try parseBlsSetting(allocator, "{bls_setting: 0}\n"));
+    try std.testing.expectEqual(.required, try parseBlsSetting(allocator, "{bls_setting: 1}\n"));
+    try std.testing.expectEqual(.ignored, try parseBlsSetting(allocator, "bls_setting: 2\n"));
+    try std.testing.expectEqual(.default, try parseBlsSetting(allocator, "{description: 'bls_setting: 1'}\n"));
+    try std.testing.expectEqual(.default, try parseBlsSetting(allocator, "{} # bls_setting: 1\n"));
+    try std.testing.expectError(error.InvalidBlsMetadata, parseBlsSetting(allocator, "{bls_setting: 10}\n"));
+    try std.testing.expectError(error.InvalidBlsMetadata, parseBlsSetting(allocator, "{bls_setting: 01}\n"));
+    try std.testing.expectError(error.TypeMismatch, parseBlsSetting(allocator, "{bls_setting: []}\n"));
+    try std.testing.expectError(error.DuplicateMapKey, parseBlsSetting(allocator, "bls_setting: 1\nbls_setting: 2\n"));
+
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var absent = try loadSpecTestConfig(allocator, temporary.dir);
+    defer absent.deinit();
+    try std.testing.expectEqual(@as(?u64, null), absent.overrides.GLOAS_FORK_EPOCH);
+    try std.testing.expectError(error.FileNotFound, loadExecutionPayloadStatus(allocator, temporary.dir));
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "execution.yaml", .data = "{execution_valid: true}\n" });
+    try std.testing.expectEqual(.valid, try loadExecutionPayloadStatus(allocator, temporary.dir));
+    try std.testing.expectEqual(.default, try loadBlsSetting(allocator, temporary.dir));
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "meta.yaml", .data = "{bls_setting: 1}\n" });
+    try std.testing.expectEqual(.required, try loadBlsSetting(allocator, temporary.dir));
+    var failing_read = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, loadBlsSetting(failing_read.allocator(), temporary.dir));
+    const oversized_metadata: [16 * 1024 + 1]u8 = @splat(' ');
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "meta.yaml", .data = &oversized_metadata });
+    try std.testing.expectError(error.StreamTooLong, loadBlsSetting(allocator, temporary.dir));
+
+    const Failure = struct {
+        fn parse(failing: Allocator, data: []const u8) !void {
+            var config = try parseSpecTestConfig(failing, data);
+            defer config.deinit();
+        }
+
+        fn parseBls(failing: Allocator, data: []const u8) !void {
+            _ = try parseBlsSetting(failing, data);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(allocator, Failure.parse, .{fixture});
+    try std.testing.checkAllAllocationFailures(allocator, Failure.parseBls, .{"{blocks_count: 2, bls_setting: 1}\n"});
+
+    inline for (.{ error.OutOfMemory, error.PoolExhausted, error.RefCountOverflow, error.InvalidPoolCapacity, error.SystemResources, error.ThreadQuotaExceeded, error.ConcurrencyUnavailable, error.Canceled, error.SkipZigTest }) |infrastructure_error| {
+        try std.testing.expectError(infrastructure_error, expectConsensusInvalid(infrastructure_error));
+    }
+    try expectConsensusInvalid(error.InvalidSignature);
+    try expectConsensusInvalid(error.IndexOutOfBounds);
+    try expectConsensusInvalid(error.Overflow);
+    const NegativeFixture = struct {
+        fn run(failing: Allocator) !void {
+            const bytes = failing.alloc(u8, 1) catch |err| return expectConsensusInvalid(err);
+            defer failing.free(bytes);
+            return error.ExpectedError;
+        }
+    };
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, NegativeFixture.run(failing.allocator()));
+}
+
+/// Negative consensus vectors must fail validation, not exhaust test infrastructure.
+/// Arithmetic and index errors remain consensus failures when processing invalid inputs.
+pub fn expectConsensusInvalid(err: anyerror) !void {
+    switch (err) {
+        error.SkipZigTest,
+        error.OutOfMemory,
+        error.PoolExhausted,
+        error.RefCountOverflow,
+        error.InvalidPoolCapacity,
+        error.SystemResources,
+        error.ThreadQuotaExceeded,
+        error.ConcurrencyUnavailable,
+        error.Canceled,
+        => return err,
+        else => {},
+    }
+}
+
+pub fn loadBlsSetting(allocator: Allocator, dir: std.Io.Dir) !BlsSetting {
+    const contents = dir.readFileAlloc(std.testing.io, "meta.yaml", allocator, .limited(16 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return .default,
+        else => return err,
+    };
+    defer allocator.free(contents);
+    return parseBlsSetting(allocator, contents);
+}
+
+fn parseBlsSetting(allocator: Allocator, contents: []const u8) !BlsSetting {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var document = yaml.Yaml{ .source = contents };
+    try document.load(arena.allocator());
+    if (document.docs.items.len != 1) return error.InvalidBlsMetadata;
+    const map = try document.docs.items[0].asMap();
+    const value = map.get("bls_setting") orelse return .default;
+    const scalar = try value.asScalar();
+    if (std.mem.eql(u8, scalar, "0")) return .default;
+    if (std.mem.eql(u8, scalar, "1")) return .required;
+    if (std.mem.eql(u8, scalar, "2")) return .ignored;
+    return error.InvalidBlsMetadata;
 }
 
 /// load SignedBeaconBlock from file using runtime fork
@@ -195,6 +450,16 @@ pub fn loadSignedBeaconBlock(allocator: std.mem.Allocator, fork: ForkSeq, dir: s
                 .full_gloas = out,
             };
         },
+        .heze => blk: {
+            const out = try allocator.create(heze.SignedBeaconBlock.Type);
+            errdefer allocator.destroy(out);
+            out.* = heze.SignedBeaconBlock.default_value;
+            errdefer heze.SignedBeaconBlock.deinit(allocator, out);
+            try loadSszSnappyValue(types.heze.SignedBeaconBlock, allocator, dir, file_name, out);
+            break :blk AnySignedBeaconBlock{
+                .full_heze = out,
+            };
+        },
     };
 }
 
@@ -251,6 +516,10 @@ pub fn deinitSignedBeaconBlock(signed_block: AnySignedBeaconBlock, allocator: st
         },
         .full_gloas => |b| {
             gloas.SignedBeaconBlock.deinit(allocator, @constCast(b));
+            allocator.destroy(b);
+        },
+        .full_heze => |b| {
+            heze.SignedBeaconBlock.deinit(allocator, @constCast(b));
             allocator.destroy(b);
         },
     }
@@ -312,6 +581,7 @@ pub fn expectEqualBeaconStates(expected: *AnyBeaconState, actual: *AnyBeaconStat
             .electra => try Debug.printDiff(types.electra.BeaconState, .electra, expected, actual),
             .fulu => try Debug.printDiff(types.fulu.BeaconState, .fulu, expected, actual),
             .gloas => try Debug.printDiff(types.gloas.BeaconState, .gloas, expected, actual),
+            .heze => try Debug.printDiff(types.heze.BeaconState, .heze, expected, actual),
         }
         return error.NotEqual;
     }

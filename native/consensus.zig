@@ -5,7 +5,6 @@ const ssz = @import("ssz");
 const constants = @import("constants");
 const preset_module = @import("preset");
 const preset = preset_module.preset;
-const ptc_size = if (preset_module.active_preset == .minimal) 16 else preset.PTC_SIZE;
 pub const primitive = @import("primitive");
 pub const electra = struct {
     pub const Bytes4 = ssz.ByteVectorType(4);
@@ -996,7 +995,7 @@ pub const gloas = struct {
         target: Checkpoint,
     });
     pub const ValidatorIndex = Uint64;
-    pub const AttestingIndices = ssz.FixedProgressiveListType(ValidatorIndex);
+    pub const AttestingIndices = ssz.FixedProgressiveListType(ValidatorIndex, .{});
     pub const Bytes96 = ssz.ByteVectorType(96);
     pub const BLSSignature = Bytes96;
     pub const IndexedAttestation = ssz.VariableProgressiveContainerType(struct {
@@ -1004,7 +1003,7 @@ pub const gloas = struct {
         data: AttestationData,
         signature: BLSSignature,
     }, &([_]u1{1} ** 3));
-    pub const AggregationBits = ssz.ProgressiveBitListType();
+    pub const AggregationBits = ssz.ProgressiveBitListType(.{});
     pub const PendingAttestation = ssz.VariableContainerType(struct {
         aggregation_bits: AggregationBits,
         data: AttestationData,
@@ -1074,15 +1073,15 @@ pub const gloas = struct {
         epoch: Epoch,
         validator_index: ValidatorIndex,
     });
-    pub const ProposerSlashings = ssz.FixedProgressiveListType(ProposerSlashing);
-    pub const AttesterSlashings = ssz.VariableProgressiveListType(AttesterSlashing);
-    pub const Attestations = ssz.VariableProgressiveListType(Attestation);
-    pub const Deposits = ssz.FixedProgressiveListType(Deposit);
+    pub const ProposerSlashings = ssz.FixedProgressiveListType(ProposerSlashing, .{});
+    pub const AttesterSlashings = ssz.VariableProgressiveListType(AttesterSlashing, .{});
+    pub const Attestations = ssz.VariableProgressiveListType(Attestation, .{});
+    pub const Deposits = ssz.FixedProgressiveListType(Deposit, .{});
     pub const SignedVoluntaryExit = ssz.FixedContainerType(struct {
         message: VoluntaryExit,
         signature: BLSSignature,
     });
-    pub const VoluntaryExits = ssz.FixedProgressiveListType(SignedVoluntaryExit);
+    pub const VoluntaryExits = ssz.FixedProgressiveListType(SignedVoluntaryExit, .{});
     pub const SyncCommitteeBits = ssz.BitVectorType(preset.SYNC_COMMITTEE_SIZE);
     pub const SyncAggregate = ssz.FixedContainerType(struct {
         sync_committee_bits: SyncCommitteeBits,
@@ -1099,10 +1098,10 @@ pub const gloas = struct {
         message: BLSToExecutionChange,
         signature: BLSSignature,
     });
-    pub const BLSToExecutionChanges = ssz.FixedProgressiveListType(SignedBLSToExecutionChange);
+    pub const BLSToExecutionChanges = ssz.FixedProgressiveListType(SignedBLSToExecutionChange, .{});
     pub const BuilderIndex = Uint64;
     pub const KZGCommitment = Bytes48;
-    pub const BlobKZGCommitments = ssz.FixedProgressiveListType(KZGCommitment);
+    pub const BlobKZGCommitments = ssz.FixedProgressiveListType(KZGCommitment, .{});
     pub const ExecutionPayloadBid = ssz.VariableProgressiveContainerType(struct {
         parent_block_hash: Hash32,
         parent_block_root: Root,
@@ -1121,7 +1120,7 @@ pub const gloas = struct {
         message: ExecutionPayloadBid,
         signature: BLSSignature,
     });
-    pub const PayloadTimelinessCommitteeBits = ssz.BitVectorType(ptc_size);
+    pub const PayloadTimelinessCommitteeBits = ssz.BitVectorType(preset.PTC_SIZE);
     pub const PayloadAttestationData = ssz.FixedContainerType(struct {
         beacon_block_root: Root,
         slot: Slot,
@@ -1133,7 +1132,7 @@ pub const gloas = struct {
         data: PayloadAttestationData,
         signature: BLSSignature,
     }, &([_]u1{1} ** 3));
-    pub const PayloadAttestations = ssz.FixedProgressiveListType(PayloadAttestation);
+    pub const PayloadAttestations = ssz.FixedProgressiveListType(PayloadAttestation, .{});
     pub const DepositRequest = ssz.FixedContainerType(struct {
         pubkey: BLSPubkey,
         withdrawal_credentials: Bytes32,
@@ -1141,31 +1140,31 @@ pub const gloas = struct {
         signature: BLSSignature,
         index: Uint64,
     });
-    pub const DepositRequests = ssz.FixedProgressiveListType(DepositRequest);
+    pub const DepositRequests = ssz.FixedProgressiveListType(DepositRequest, .{});
     pub const WithdrawalRequest = ssz.FixedContainerType(struct {
         source_address: ExecutionAddress,
         validator_pubkey: BLSPubkey,
         amount: Gwei,
     });
-    pub const WithdrawalRequests = ssz.FixedProgressiveListType(WithdrawalRequest);
+    pub const WithdrawalRequests = ssz.FixedProgressiveListType(WithdrawalRequest, .{});
     pub const ConsolidationRequest = ssz.FixedContainerType(struct {
         source_address: ExecutionAddress,
         source_pubkey: BLSPubkey,
         target_pubkey: BLSPubkey,
     });
-    pub const ConsolidationRequests = ssz.FixedProgressiveListType(ConsolidationRequest);
+    pub const ConsolidationRequests = ssz.FixedProgressiveListType(ConsolidationRequest, .{});
     pub const BuilderDepositRequest = ssz.FixedContainerType(struct {
         pubkey: BLSPubkey,
         withdrawal_credentials: Bytes32,
         amount: Gwei,
         signature: BLSSignature,
     });
-    pub const BuilderDepositRequests = ssz.FixedProgressiveListType(BuilderDepositRequest);
+    pub const BuilderDepositRequests = ssz.FixedProgressiveListType(BuilderDepositRequest, .{});
     pub const BuilderExitRequest = ssz.FixedContainerType(struct {
         source_address: ExecutionAddress,
         pubkey: BLSPubkey,
     });
-    pub const BuilderExitRequests = ssz.FixedProgressiveListType(BuilderExitRequest);
+    pub const BuilderExitRequests = ssz.FixedProgressiveListType(BuilderExitRequest, .{});
     pub const ExecutionRequests = ssz.VariableProgressiveContainerType(struct {
         deposits: DepositRequests,
         withdrawals: WithdrawalRequests,
@@ -1197,15 +1196,15 @@ pub const gloas = struct {
     });
     pub const HistoricalRoots = ssz.FixedListType(Root, preset.HISTORICAL_ROOTS_LIMIT, .{});
     pub const Eth1DataVotes = ssz.FixedListType(Eth1Data, (preset.EPOCHS_PER_ETH1_VOTING_PERIOD * preset.SLOTS_PER_EPOCH), .{});
-    pub const Validators = ssz.FixedProgressiveListType(Validator);
-    pub const Balances = ssz.FixedProgressiveListType(Gwei);
+    pub const Validators = ssz.FixedProgressiveListType(Validator, .{});
+    pub const Balances = ssz.FixedProgressiveListType(Gwei, .{});
     pub const RandaoMixes = ssz.FixedVectorType(Bytes32, preset.EPOCHS_PER_HISTORICAL_VECTOR, .{});
     pub const Slashings = ssz.FixedVectorType(Gwei, preset.EPOCHS_PER_SLASHINGS_VECTOR, .{});
     pub const Uint8 = ssz.UintType(8);
     pub const ParticipationFlags = Uint8;
-    pub const EpochParticipation = ssz.FixedProgressiveListType(ParticipationFlags);
+    pub const EpochParticipation = ssz.FixedProgressiveListType(ParticipationFlags, .{});
     pub const JustificationBits = ssz.BitVectorType(constants.JUSTIFICATION_BITS_LENGTH);
-    pub const InactivityScores = ssz.FixedProgressiveListType(Uint64);
+    pub const InactivityScores = ssz.FixedProgressiveListType(Uint64, .{});
     pub const SyncCommitteePubkeys = ssz.FixedVectorType(BLSPubkey, preset.SYNC_COMMITTEE_SIZE, .{});
     pub const SyncCommittee = ssz.FixedContainerType(struct {
         pubkeys: SyncCommitteePubkeys,
@@ -1224,18 +1223,18 @@ pub const gloas = struct {
         signature: BLSSignature,
         slot: Slot,
     });
-    pub const PendingDeposits = ssz.FixedProgressiveListType(PendingDeposit);
+    pub const PendingDeposits = ssz.FixedProgressiveListType(PendingDeposit, .{});
     pub const PendingPartialWithdrawal = ssz.FixedContainerType(struct {
         validator_index: ValidatorIndex,
         amount: Gwei,
         withdrawable_epoch: Epoch,
     });
-    pub const PendingPartialWithdrawals = ssz.FixedProgressiveListType(PendingPartialWithdrawal);
+    pub const PendingPartialWithdrawals = ssz.FixedProgressiveListType(PendingPartialWithdrawal, .{});
     pub const PendingConsolidation = ssz.FixedContainerType(struct {
         source_index: ValidatorIndex,
         target_index: ValidatorIndex,
     });
-    pub const PendingConsolidations = ssz.FixedProgressiveListType(PendingConsolidation);
+    pub const PendingConsolidations = ssz.FixedProgressiveListType(PendingConsolidation, .{});
     pub const ProposerLookahead = ssz.FixedVectorType(ValidatorIndex, ((preset.MIN_SEED_LOOKAHEAD + 1) * preset.SLOTS_PER_EPOCH), .{});
     pub const Builder = ssz.FixedContainerType(struct {
         pubkey: BLSPubkey,
@@ -1245,7 +1244,7 @@ pub const gloas = struct {
         deposit_epoch: Epoch,
         withdrawable_epoch: Epoch,
     });
-    pub const Builders = ssz.FixedProgressiveListType(Builder);
+    pub const Builders = ssz.FixedProgressiveListType(Builder, .{});
     pub const ExecutionPayloadAvailability = ssz.BitVectorType(preset.SLOTS_PER_HISTORICAL_ROOT);
     pub const BuilderPendingWithdrawal = ssz.FixedContainerType(struct {
         fee_recipient: ExecutionAddress,
@@ -1258,15 +1257,15 @@ pub const gloas = struct {
         proposer_index: ValidatorIndex,
     });
     pub const BuilderPendingPayments = ssz.FixedVectorType(BuilderPendingPayment, (2 * preset.SLOTS_PER_EPOCH), .{});
-    pub const BuilderPendingWithdrawals = ssz.FixedProgressiveListType(BuilderPendingWithdrawal);
+    pub const BuilderPendingWithdrawals = ssz.FixedProgressiveListType(BuilderPendingWithdrawal, .{});
     pub const Withdrawal = ssz.FixedContainerType(struct {
         index: WithdrawalIndex,
         validator_index: ValidatorIndex,
         address: ExecutionAddress,
         amount: Gwei,
     });
-    pub const Withdrawals = ssz.FixedProgressiveListType(Withdrawal);
-    pub const PayloadTimelinessCommittee = ssz.FixedVectorType(ValidatorIndex, ptc_size, .{});
+    pub const Withdrawals = ssz.FixedProgressiveListType(Withdrawal, .{});
+    pub const PayloadTimelinessCommittee = ssz.FixedVectorType(ValidatorIndex, preset.PTC_SIZE, .{});
     pub const PayloadTimelinessCommitteeWindow = ssz.FixedVectorType(PayloadTimelinessCommittee, ((preset.MIN_SEED_LOOKAHEAD + 2) * preset.SLOTS_PER_EPOCH), .{});
     pub const BeaconState = ssz.VariableProgressiveContainerType(struct {
         genesis_time: Uint64,
@@ -1340,14 +1339,14 @@ pub const gloas = struct {
         execution_block_hash: Hash32,
         execution_branch: ExecutionBranch,
     });
-    pub const CurrentSyncCommitteeBranch = ssz.FixedVectorType(Bytes32, std.math.log2(2945), .{});
+    pub const CurrentSyncCommitteeBranch = ssz.FixedVectorType(Bytes32, std.math.log2(constants.CURRENT_SYNC_COMMITTEE_GINDEX_GLOAS), .{});
     pub const LightClientBootstrap = ssz.FixedContainerType(struct {
         header: LightClientHeader,
         current_sync_committee: SyncCommittee,
         current_sync_committee_branch: CurrentSyncCommitteeBranch,
     });
-    pub const NextSyncCommitteeBranch = ssz.FixedVectorType(Bytes32, std.math.log2(2946), .{});
-    pub const FinalityBranch = ssz.FixedVectorType(Bytes32, std.math.log2(735), .{});
+    pub const NextSyncCommitteeBranch = ssz.FixedVectorType(Bytes32, std.math.log2(constants.NEXT_SYNC_COMMITTEE_GINDEX_GLOAS), .{});
+    pub const FinalityBranch = ssz.FixedVectorType(Bytes32, std.math.log2(constants.FINALIZED_ROOT_GINDEX_GLOAS), .{});
     pub const LightClientUpdate = ssz.FixedContainerType(struct {
         attested_header: LightClientHeader,
         next_sync_committee: SyncCommittee,
@@ -1400,9 +1399,9 @@ pub const gloas = struct {
     pub const ExtraData = ssz.ByteListType(preset.MAX_EXTRA_DATA_BYTES);
     pub const Uint256 = ssz.UintType(256);
     pub const Byte = ssz.UintType(8);
-    pub const Transaction = @import("progressive_bytes.zig").Type;
-    pub const Transactions = ssz.VariableProgressiveListType(Transaction);
-    pub const BlockAccessList = @import("progressive_bytes.zig").Type;
+    pub const Transaction = ssz.ProgressiveByteListType(.{});
+    pub const Transactions = ssz.VariableProgressiveListType(Transaction, .{});
+    pub const BlockAccessList = ssz.ProgressiveByteListType(.{});
     pub const ExecutionPayload = ssz.VariableProgressiveContainerType(struct {
         parent_hash: Hash32,
         fee_recipient: ExecutionAddress,
@@ -1480,8 +1479,8 @@ pub const gloas = struct {
     });
     pub const ColumnIndex = Uint64;
     pub const Cell = ssz.ByteVectorType((constants.BYTES_PER_FIELD_ELEMENT * preset.FIELD_ELEMENTS_PER_CELL));
-    pub const DataColumn = ssz.FixedProgressiveListType(Cell);
-    pub const KZGProofs = ssz.FixedProgressiveListType(KZGProof);
+    pub const DataColumn = ssz.FixedProgressiveListType(Cell, .{});
+    pub const KZGProofs = ssz.FixedProgressiveListType(KZGProof, .{});
     pub const DataColumnSidecar = ssz.VariableContainerType(struct {
         index: ColumnIndex,
         column: DataColumn,
@@ -1501,7 +1500,7 @@ pub const gloas = struct {
         block_root: Root,
         columns: DataColumnIndices,
     });
-    pub const CellsBitList = ssz.ProgressiveBitListType();
+    pub const CellsBitList = ssz.ProgressiveBitListType(.{});
     pub const PartialDataColumnSidecar = ssz.VariableContainerType(struct {
         cells_present_bitmap: CellsBitList,
         partial_column: DataColumn,
@@ -1526,7 +1525,7 @@ pub const gloas = struct {
         data: PayloadAttestationData,
         signature: BLSSignature,
     });
-    pub const PayloadTimelinessCommitteeIndices = ssz.FixedListType(ValidatorIndex, ptc_size, .{});
+    pub const PayloadTimelinessCommitteeIndices = ssz.FixedListType(ValidatorIndex, preset.PTC_SIZE, .{});
     pub const IndexedPayloadAttestation = ssz.VariableProgressiveContainerType(struct {
         attesting_indices: PayloadTimelinessCommitteeIndices,
         data: PayloadAttestationData,

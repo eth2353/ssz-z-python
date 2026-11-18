@@ -1,0 +1,151 @@
+name: Publish stable release
+
+# only one can tun at a time
+concurrency: cd-publish-stable
+
+# See for rationale https://github.com/ChainSafe/lodestar/blob/unstable/RELEASE.md
+on:
+  workflow_call:
+
+permissions:
+  contents: write # Required for OIDC
+  id-token: write # Required to create a Github release
+  pull-requests: write # Required to add tags to pull requests
+  attestations: write # Required by docker.yml reusable workflow
+  artifact-metadata: write # Required by docker.yml reusable workflow
+
+jobs:
+  tag:
+    name: Check tag
+    # To support npm provenance we must use github-hosted runners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Get tag
+        id: get_tag
+        run: echo "tag=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+
+      - name: Assert tag == package.json version
+        run: .github/workflows/scripts/assert-same-package-version.sh
+        env:
+          TAG: ${{ steps.get_tag.outputs.tag }}
+
+      - name: Get previous tag
+        id: get_prev_tag
+        run: node scripts/get_prev_tag.js
+        env:
+          CURRENT_TAG: ${{ steps.get_tag.outputs.tag }}
+          IGNORE_PATTERN: rc
+
+      - name: Determine release type
+        id: release_type
+        run: |
+          STABLE_COMMIT=$(git log --pretty="%h" -n 1 refs/remotes/origin/stable)
+          TAG_COMMIT=$(git log --pretty="%h" -n 1 $GITHUB_REF)
+          echo "stable_commit=$STABLE_COMMIT" >> $GITHUB_OUTPUT
+          echo "tag_commit=$TAG_COMMIT" >> $GITHUB_OUTPUT
+
+    outputs:
+      is_stable: ${{ steps.release_type.outputs.stable_commit == steps.release_type.outputs.tag_commit }}
+      tag: ${{ steps.get_tag.outputs.tag }}
+      prev_tag: ${{ steps.get_prev_tag.outputs.prev_tag }}
+
+  binaries:
+    name: Build lodestar binaries
+    uses: ./.github/workflows/binaries.yml
+    needs: tag
+    with:
+      version: ${{ needs.tag.outputs.tag }}
+
+  npm:
+    name: Publish to NPM & Github
+    runs-on: ubuntu-latest
+    needs: [tag, binaries]
+    if: needs.tag.outputs.is_stable == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Needs full depth for changelog generation
+
+      - uses: "./.github/actions/setup-and-build"
+        with:
+          node: 26
+          # Required for OIDC publish under pnpm v11 — without registry-url
+          # setup-node skips writing the registry to .npmrc and the npm OIDC
+          # auth flow rejects the token. Matches publish-dev.yml's setup.
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Generate changelog
+        run: node scripts/generate_changelog.mjs ${{ needs.tag.outputs.prev_tag }} ${{ needs.tag.outputs.tag }} CHANGELOG.md
+
+      - name: Get binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          tag_name: ${{ needs.tag.outputs.tag }}
+          body_path: "CHANGELOG.md"
+          name: Release ${{ needs.tag.outputs.tag }}
+          prerelease: false
+          draft: true
+
+      - name: Publish to npm registry (release)
+        run: pnpm run release:publish
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit ${{ needs.tag.outputs.tag }} --draft=false
+
+      # In case of failure
+      - name: Rollback on failure
+        if: failure()
+        uses: author/action-rollback@f4473931b1155b601092ec00eb1fa4882b80219f # 1.0.4
+        with:
+          release_id: ${{ steps.create_release.outputs.id }}
+          tag: ${{ needs.tag.outputs.tag }}
+          delete_orphan_tag: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  comment:
+    name: Comment on included PRs
+    runs-on: ubuntu-latest
+    needs: [tag, npm]
+    if: needs.tag.outputs.is_stable == 'true'
+    steps:
+      - uses: nflaig/release-comment-on-pr@addf0108e7a60a9aaef4eee2900d69b126a75a5d # v1
+        with:
+          token: ${{ secrets.GH_PAGES_TOKEN }}
+
+  await-release:
+    name: Await npm release
+    runs-on: ubuntu-latest
+    needs: [tag, npm]
+    if: needs.tag.outputs.is_stable == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/await-release.sh ${{ needs.tag.outputs.tag }} latest 900
+
+  docker:
+    name: Publish to Docker Hub
+    needs: [tag, await-release]
+    if: needs.tag.outputs.is_stable == 'true'
+    uses: ./.github/workflows/docker.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      extra-tags: latest
+    secrets: inherit

@@ -1,0 +1,82 @@
+name: Benchmark
+
+on:
+  schedule:
+    - cron: "30 1 * * *" # 1:30 am UTC
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: warp-ubuntu-2204-x64-4x
+    # Forks don't have access to the S3 credentials and the workflow will fail
+    if: github.repository == 'ChainSafe/lodestar'
+
+    steps:
+      # <common-build> - Uses YAML anchors in the future
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: "./.github/actions/setup-and-build"
+        with:
+          node: 26
+      # </common-build>
+
+      # Restore performance downloaded states
+      - name: Restore performance state cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/state-transition/test-cache
+          key: perf-states-${{ hashFiles('packages/state-transition/test/perf/params.ts') }}
+
+      - name: Run benchmarks
+        id: benchmarks
+        # An explicit bash shell enables pipefail, without it tee hides a failed run
+        shell: bash
+        # @chainsafe/benchmark only infers the baseline and posts comments on push and pull_request events
+        # Results are not posted as PR comments, failed benches are written to the job summary below
+        run: pnpm benchmark --compareBranch unstable --skipPostComment 2>&1 | tee "$RUNNER_TEMP/benchmark.log"
+        env:
+          # benchmark options
+          BENCHMARK_S3: true
+          # S3 credentials
+          S3_ACCESS_KEY: ${{ secrets.S3_BENCH_LODESTAR_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_BENCH_LODESTAR_SECRET_KEY }}
+          S3_REGION: ${{ secrets.S3_BENCH_LODESTAR_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BENCH_LODESTAR_BUCKET }}
+          S3_ENDPOINT: ${{ secrets.S3_BENCH_LODESTAR_ENDPOINT }}
+          # Key prefix to separate benchmark data from multiple repositories
+          S3_KEY_PREFIX: ${{ github.repository }}/${{ runner.os }}
+
+      - name: Report failed benchmarks in the job summary
+        if: failure() && steps.benchmarks.outcome == 'failure'
+        # pipefail lets the gh fallbacks below take effect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          log=$(sed -E 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/benchmark.log")
+          baseline=$(grep -oE 'Found previous benchmark .* at commit [0-9a-f]+' <<< "$log" | grep -oE '[0-9a-f]+$' | head -n 1 || true)
+          link_prs() { sed -E "s|\(#([0-9]+)\)|([#\1]($REPO_URL/pull/\1))|g"; }
+          {
+            echo "### Failed benchmarks"
+            echo
+            echo '```'
+            grep -E '^\s*(!|✖) ' <<< "$log" || echo "No failed benchmarks found, see the job log"
+            echo '```'
+            echo
+            if [ -z "$baseline" ]; then
+              echo "No previous benchmark found"
+            else
+              echo "### Baseline"
+              echo
+              gh api "repos/$GITHUB_REPOSITORY/commits/$baseline" \
+                --jq '"[`\(.sha[0:10])`](\(.html_url)) \(.commit.committer.date[0:10]): \(.commit.message | split("\n")[0])"' \
+                | link_prs || echo "$baseline"
+              echo
+              echo "### Commits since the baseline"
+              echo
+              # The compare API returns at most 250 commits
+              gh api "repos/$GITHUB_REPOSITORY/compare/$baseline...$GITHUB_SHA" \
+                --jq '.commits[] | "- \(.commit.message | split("\n")[0])"' \
+                | link_prs || echo "Could not list commits"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

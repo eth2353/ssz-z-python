@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
         const options = b.addOptions();
         options.addOption([]const u8, "preset", preset_name);
         options.addOption(?u8, "zero_hash_max_depth", null);
+        options.addOption(?bool, "expensive_safety_checks", null);
         const build_options = options.createModule();
         const constants = module(b, target, optimize, "src/constants/root.zig");
         const hex = module(b, target, optimize, "src/hex.zig");

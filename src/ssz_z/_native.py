@@ -9,7 +9,7 @@ from pathlib import Path
 PRESETS = ("mainnet", "minimal", "gnosis")
 FORKS = ("electra", "fulu", "gloas")
 MAX_INPUT_SIZE = 512 * 1024 * 1024
-UPSTREAM_COMMIT = "ba4f89e967bdb498f1d856f699f1ba2b863be330"
+UPSTREAM_COMMIT = "0ac7778d7034693a0818296dbe717f2999576ab1"
 SPEC_VERSION = "v1.7.0-beta.4"
 
 

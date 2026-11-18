@@ -167,7 +167,7 @@ pub fn isBytes(comptime T: type) bool {
     return switch (T.kind) {
         .vector => ssz.isByteVectorType(T),
         .list => ssz.isByteListType(T),
-        .progressive_list => @hasDecl(T, "is_bytes"),
+        .progressive_list => ssz.isProgressiveByteListType(T),
         else => false,
     };
 }

@@ -7,7 +7,7 @@ it("reclaims discarded native states under memory pressure without explicit GC",
     process.execPath,
     ["--import", "tsx", fileURLToPath(new URL("./fixtures/stateMemory.ts", import.meta.url))],
     {
-      cwd: new URL("../../", import.meta.url),
+      cwd: new URL("../", import.meta.url),
       encoding: "utf8",
       env: {...process.env, LODESTAR_Z_NODE_POOL_CAPACITY: "10000000", NODE_OPTIONS: ""},
       timeout: 30_000,

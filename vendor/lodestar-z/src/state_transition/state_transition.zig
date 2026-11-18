@@ -1,5 +1,5 @@
 const std = @import("std");
-const Diagnostics = @import("diagnostics").Diagnostics;
+const Diagnostics = @import("diagnostics.zig").Diagnostics;
 const Allocator = std.mem.Allocator;
 const ForkSeq = @import("config").ForkSeq;
 const metrics = @import("metrics.zig");
@@ -30,16 +30,20 @@ const upgradeStateToCapella = @import("slot/upgrade_state_to_capella.zig").upgra
 const upgradeStateToDeneb = @import("slot/upgrade_state_to_deneb.zig").upgradeStateToDeneb;
 const upgradeStateToElectra = @import("slot/upgrade_state_to_electra.zig").upgradeStateToElectra;
 const upgradeStateToFulu = @import("slot/upgrade_state_to_fulu.zig").upgradeStateToFulu;
+const upgradeStateToGloas = @import("slot/upgrade_state_to_gloas.zig").upgradeStateToGloas;
+const upgradeStateToHeze = @import("slot/upgrade_state_to_heze.zig").upgradeStateToHeze;
 
 pub const ExecutionPayloadStatus = enum(u8) {
     invalid,
     valid,
+    pre_merge,
 };
 
 pub const DataAvailabilityStatus = enum(u8) {
     pre_data,
     out_of_range,
     available,
+    not_required,
 };
 
 pub const ProcessBlockSource = metrics.ProcessBlockSource;
@@ -63,7 +67,7 @@ pub fn processSlots(
     if (try state.slot() > slot) return error.outdatedSlot;
 
     while (try state.slot() < slot) {
-        try processSlot(cached_state.state);
+        try processSlot(io, cached_state.state);
 
         const next_slot = try state.slot() + 1;
         if (next_slot % preset.SLOTS_PER_EPOCH == 0) {
@@ -111,7 +115,7 @@ pub fn processSlots(
 
             if (state_epoch == config.chain.ALTAIR_FORK_EPOCH) {
                 const phase0_state = try state.tryCastToFork(.phase0);
-                const upgraded = try upgradeStateToAltair(allocator, config, epoch_cache, phase0_state);
+                const upgraded = try upgradeStateToAltair(allocator, io, config, epoch_cache, phase0_state);
                 state.* = .{ .altair = upgraded.inner };
             }
             if (state_epoch == config.chain.BELLATRIX_FORK_EPOCH) {
@@ -138,6 +142,18 @@ pub fn processSlots(
                 const electra_state = try state.tryCastToFork(.electra);
                 const upgraded = try upgradeStateToFulu(allocator, config, epoch_cache, electra_state);
                 state.* = .{ .fulu = upgraded.inner };
+            }
+
+            if (state_epoch == config.chain.GLOAS_FORK_EPOCH) {
+                const fulu_state = try state.tryCastToFork(.fulu);
+                const upgraded = try upgradeStateToGloas(allocator, io, config, epoch_cache, fulu_state);
+                state.* = .{ .gloas = upgraded.inner };
+            }
+
+            if (state_epoch == config.chain.HEZE_FORK_EPOCH) {
+                const gloas_state = try state.tryCastToFork(.gloas);
+                const upgraded = try upgradeStateToHeze(allocator, config, gloas_state);
+                state.* = .{ .heze = upgraded.inner };
             }
 
             try epoch_cache.finalProcessEpoch(state);
@@ -183,6 +199,8 @@ pub fn stateTransition(
     opts: TransitionOpts,
     validator_monitor: ?*ValidatorMonitor,
 ) !*CachedBeaconState {
+    if (opts.diagnostics) |diagnostics| diagnostics.* = .{};
+
     const block = signed_block.beaconBlock();
     const block_slot = block.slot();
 
@@ -232,9 +250,7 @@ pub fn stateTransition(
                     if (comptime (bt == .blinded and f.lt(.bellatrix)) or (bt == .blinded and f.gte(.gloas))) {
                         return error.InvalidBlockTypeForFork;
                     } else {
-                        var block_diagnostics: Diagnostics = .{};
-                        const diagnostics = opts.diagnostics orelse &block_diagnostics;
-                        processBlock(
+                        try processBlock(
                             f,
                             allocator,
                             io,
@@ -246,13 +262,8 @@ pub fn stateTransition(
                             bt,
                             block.castToFork(bt, f),
                             opts.block_external_data,
-                            .{ .verify_signature = opts.verify_signatures, .diagnostics = diagnostics },
-                        ) catch |err| {
-                            if (diagnostics.detail) |*detail| {
-                                std.log.warn("Block processing failed at slot {d}: {f}", .{ block_slot, detail });
-                            }
-                            return err;
-                        };
+                            .{ .verify_signature = opts.verify_signatures, .diagnostics = opts.diagnostics },
+                        );
                     }
                 },
             }
@@ -274,7 +285,7 @@ pub fn stateTransition(
     // Verify state root
     if (opts.verify_state_root) {
         const timer = time.start(io);
-        const post_state_root = try post_state.hashTreeRoot();
+        const post_state_root = try post_state.hashTreeRootParallel(io);
         try metrics.state_transition.state_hash_tree_root.observe(.{ .source = .state_transition }, time.durationSeconds(time.since(io, timer)));
 
         const block_state_root = block.stateRoot();

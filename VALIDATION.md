@@ -2,10 +2,17 @@
 
 Verified locally on macOS arm64 against these pinned sources:
 
-- Lodestar-Z `main`: `ba4f89e967bdb498f1d856f699f1ba2b863be330`.
+- Lodestar `unstable`: `0ac7778d7034693a0818296dbe717f2999576ab1`.
 - Consensus specification: `v1.7.0-beta.4`, commit
   `aa16bb4c156184e9548a997d53efaf2a228a6304`.
 - Zig 0.16.0, ReleaseSafe, baseline CPU.
+
+The November 18, 2026 refresh follows development from the archived Lodestar-Z
+repository into the active Lodestar monorepo. All 946 vendored files were
+compared byte-for-byte against the pinned archive. There are no local native
+patches. The bindings use upstream's progressive byte-list type, minimal
+`PTC_SIZE=16`, and Gloas sync-committee/finality generalized indices directly.
+The hashtree dependencies remain at the revisions pinned by upstream.
 
 ## Official SSZ static vectors
 
@@ -20,7 +27,8 @@ archives and passed under both Python 3.12.16 and Python 3.15.2:
 
 Each case verified decoding, byte-identical encoding, the published hash tree
 root, JSON input conversion, and JSON output round trips. The run also included
-75 bundled official smoke vectors and 108 binding tests: **24,247 passed**.
+75 bundled official smoke vectors, 108 binding tests, and one schema-generator
+regression test: **24,248 passed**.
 Every external case also exercised the SSZ-backed value loaders for both JSON
 and SSZ, checking exact encoded bytes and roots.
 
@@ -31,8 +39,8 @@ Archive SHA-256 hashes:
 
 ## Binding checks
 
-The suite without external vector files passed **183 tests**, including the
-75 bundled vectors and 108 local tests. It covers every exported codec's default
+The suite without external vector files passed **184 tests**, including the
+75 bundled vectors and 109 local tests. It covers every exported codec's default
 round trip across all nine fork/preset combinations; integer boundaries,
 malformed JSON, offsets, lengths, bitfields, deterministic SSZ mutations,
 concurrent calls, preset-specific sizes, and Gloas progressive hashing. Beacon
@@ -52,6 +60,9 @@ while progressive participation lists retain arrays of decimal strings.
 
 Gnosis has no vectors in the official Ethereum release. Its codecs passed the
 local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
+Gnosis was already present in the previous upstream pin and remains available
+in the active source. Schema generation now rejects an incomplete specification
+checkout without overwriting the existing generated file.
 
 ## Packaging
 

@@ -1,14 +1,15 @@
 # ssz-z-python
 
-Native Python bindings to [ChainSafe Lodestar-Z](https://github.com/ChainSafe/lodestar-z)
+Native Python bindings to [ChainSafe Lodestar's Zig SSZ engine](https://github.com/ChainSafe/lodestar/tree/unstable/src/ssz)
 for SSZ serialization, deserialization, consensus JSON, and hash tree roots.
 Supports **Electra, Fulu, and Gloas**, each with **mainnet, minimal, and gnosis** presets.
 All three presets can be used in the same Python process.
 
-Lodestar-Z's active branch is `main`; the repository has no `master` branch.
-This package vendors its latest `main` revision at the start of implementation,
-`ba4f89e967bdb498f1d856f699f1ba2b863be330`. Exact source revisions and licenses
-are recorded in [vendor/UPSTREAM.json](vendor/UPSTREAM.json).
+Lodestar-Z was archived on October 30, 2026; development continues in the
+Lodestar monorepo on `unstable`. This package vendors its Zig source at
+`0ac7778d7034693a0818296dbe717f2999576ab1` in `vendor/lodestar-z`.
+Exact source revisions and licenses are recorded in
+[vendor/UPSTREAM.json](vendor/UPSTREAM.json).
 
 ## Install
 
@@ -174,7 +175,7 @@ with the revision recorded in `vendor/UPSTREAM.json` and implementation in
 
 ## Specification compatibility
 
-The SSZ algorithms come from Lodestar-Z's latest pinned `main`. Consensus schemas
+The SSZ algorithms come from Lodestar's pinned `unstable` revision. Consensus schemas
 are generated from **consensus-specs v1.7.0-beta.4** by
 [tools/generate_schemas.py](tools/generate_schemas.py), using only Python syntax
 parsing. No specification code runs during generation. The generated
@@ -189,9 +190,10 @@ parsing. No specification code runs during generation. The generated
 
 Fork codecs come directly from these generated, vector-verified schemas; there
 is no fallback to upstream consensus layouts or legacy type names. Gloas
-remains a draft; later releases may change layouts and roots. One local compiler
-quota adjustment is documented in [vendor/PATCHES.md](vendor/PATCHES.md). It
-allows the 46-field progressive state to compile and changes no SSZ algorithm.
+remains a draft; later releases may change layouts and roots. The vendored SSZ
+engine is unmodified; upstream now includes the progressive-container compiler
+quota fix and progressive byte-list type. Minimal Gloas uses upstream's
+`PTC_SIZE=16` directly.
 
 Gnosis inherits its preset constants from Lodestar-Z and uses the same current
 specification schemas. The Ethereum release publishes mainnet and minimal vectors, so

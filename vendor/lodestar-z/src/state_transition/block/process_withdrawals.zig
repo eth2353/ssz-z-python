@@ -1,5 +1,5 @@
 const std = @import("std");
-const diagnostics = @import("diagnostics");
+const diagnostics = @import("../diagnostics.zig");
 const Allocator = std.mem.Allocator;
 const EpochCache = @import("../cache/epoch_cache.zig").EpochCache;
 const BeaconState = @import("fork_types").BeaconState;
@@ -16,11 +16,14 @@ const hasEth1WithdrawalCredential = @import("../utils/capella.zig").hasEth1Withd
 const getMaxEffectiveBalance = @import("../utils/validator.zig").getMaxEffectiveBalance;
 const decreaseBalance = @import("../utils/balance.zig").decreaseBalance;
 const Node = @import("persistent_merkle_tree").Node;
+const gloas_withdrawals = @import("process_withdrawals_gloas.zig");
 
 pub const WithdrawalsResult = struct {
     withdrawals: Withdrawals,
     sampled_validators: usize = 0,
     processed_partial_withdrawals_count: usize = 0,
+    processed_builder_withdrawals_count: usize = 0,
+    processed_builders_sweep_count: usize = 0,
 };
 
 /// right now for the implementation we pass in processBlock()
@@ -35,6 +38,8 @@ pub fn processWithdrawals(
     payload_withdrawals_root: Root,
     diag: ?*diagnostics.Diagnostics,
 ) !void {
+    if (comptime fork.gte(.gloas)) return gloas_withdrawals.processWithdrawals(fork, state, &expected_withdrawals_result);
+
     // processedPartialWithdrawalsCount is withdrawals coming from EL since electra (EIP-7002)
     const processed_partial_withdrawals_count = expected_withdrawals_result.processed_partial_withdrawals_count;
     const expected_withdrawals = expected_withdrawals_result.withdrawals.items;
@@ -44,7 +49,7 @@ pub fn processWithdrawals(
     try types.capella.Withdrawals.hashTreeRoot(allocator, &expected_withdrawals_result.withdrawals, &expected_withdrawals_root);
 
     if (!std.mem.eql(u8, &expected_withdrawals_root, &payload_withdrawals_root)) {
-        return diagnostics.state_transition.withdrawalsRootMismatch(
+        return diagnostics.withdrawalsRootMismatch(
             diag,
             &expected_withdrawals_root,
             &payload_withdrawals_root,
@@ -100,6 +105,8 @@ pub fn getExpectedWithdrawals(
     withdrawals_result: *WithdrawalsResult,
     withdrawal_balances: *std.AutoHashMap(ValidatorIndex, usize),
 ) !void {
+    if (comptime fork.gte(.gloas)) return gloas_withdrawals.getExpectedWithdrawals(fork, epoch_cache, state, withdrawals_result);
+
     std.debug.assert(withdrawals_result.withdrawals.capacity == preset.MAX_WITHDRAWALS_PER_PAYLOAD);
     if (comptime fork.lt(.capella)) return error.InvalidForkSequence;
 

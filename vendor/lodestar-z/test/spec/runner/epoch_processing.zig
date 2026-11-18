@@ -26,8 +26,11 @@ pub const EpochProcessingFn = enum {
     sync_committee_updates,
     historical_summaries_update,
     pending_deposits,
+    pending_deposits_churn,
     pending_consolidations,
     proposer_lookahead,
+    builder_pending_payments,
+    ptc_window,
 
     pub fn suiteName(self: EpochProcessingFn) []const u8 {
         return @tagName(self) ++ "/pyspec_tests";
@@ -46,10 +49,10 @@ pub fn TestCase(comptime fork: ForkSeq, comptime epoch_process_fn: EpochProcessi
 
         pub fn execute(allocator: std.mem.Allocator, dir: std.Io.Dir) !void {
             const pool_size = if (active_preset == .mainnet) 10_000_000 else 1_000_000;
-            var pool = try Node.Pool.init(.{ .page_allocator = allocator, .allocator = allocator, .pool_size = pool_size });
-            defer pool.deinit();
+            const pool = try test_case.acquirePool(allocator, pool_size);
+            defer test_case.releasePool();
 
-            var tc = try Self.init(allocator, &pool, dir);
+            var tc = try Self.init(allocator, pool, dir);
             defer tc.deinit();
 
             try tc.runTest();
@@ -86,10 +89,7 @@ pub fn TestCase(comptime fork: ForkSeq, comptime epoch_process_fn: EpochProcessi
                 try expectEqualBeaconStates(post, self.pre.cached_state.state);
             } else {
                 self.process() catch |err| {
-                    if (err == error.SkipZigTest) {
-                        return err;
-                    }
-                    return;
+                    return test_case.expectConsensusInvalid(err);
                 };
                 return error.ExpectedError;
             }
@@ -116,7 +116,7 @@ pub fn TestCase(comptime fork: ForkSeq, comptime epoch_process_fn: EpochProcessi
                 .effective_balance_updates => _ = try state_transition.processEffectiveBalanceUpdates(fork, allocator, epoch_cache, fork_state, &epoch_transition_cache),
                 .eth1_data_reset => try state_transition.processEth1DataReset(fork, fork_state, &epoch_transition_cache),
                 .historical_roots_update => try state_transition.processHistoricalRootsUpdate(fork, fork_state, &epoch_transition_cache),
-                .inactivity_updates => try state_transition.processInactivityUpdates(fork, allocator, config, epoch_cache, fork_state, &epoch_transition_cache),
+                .inactivity_updates => try state_transition.processInactivityUpdates(fork, config, epoch_cache, fork_state, &epoch_transition_cache),
                 .justification_and_finalization => try state_transition.processJustificationAndFinalization(fork, fork_state, &epoch_transition_cache),
                 .participation_flag_updates => try state_transition.processParticipationFlagUpdates(fork, fork_state),
                 .participation_record_updates => try state_transition.processParticipationRecordUpdates(fork, fork_state),
@@ -125,13 +125,15 @@ pub fn TestCase(comptime fork: ForkSeq, comptime epoch_process_fn: EpochProcessi
                 .rewards_and_penalties => try state_transition.processRewardsAndPenalties(fork, config, epoch_cache, fork_state, &epoch_transition_cache, null),
                 .slashings => _ = try state_transition.processSlashings(fork, epoch_cache, fork_state, &epoch_transition_cache, true),
                 .slashings_reset => try state_transition.processSlashingsReset(fork, epoch_cache, fork_state, &epoch_transition_cache),
-                .sync_committee_updates => try state_transition.processSyncCommitteeUpdates(fork, allocator, epoch_cache, fork_state),
+                .sync_committee_updates => try state_transition.processSyncCommitteeUpdates(fork, allocator, std.testing.io, epoch_cache, fork_state),
                 .historical_summaries_update => try state_transition.processHistoricalSummariesUpdate(fork, fork_state, &epoch_transition_cache),
-                .pending_deposits => try state_transition.processPendingDeposits(fork, allocator, std.testing.io, config, epoch_cache, fork_state, &epoch_transition_cache),
+                .pending_deposits, .pending_deposits_churn => try state_transition.processPendingDeposits(fork, allocator, std.testing.io, config, epoch_cache, fork_state, &epoch_transition_cache),
                 .pending_consolidations => try state_transition.processPendingConsolidations(fork, epoch_cache, fork_state, &epoch_transition_cache),
                 .proposer_lookahead => {
                     try state_transition.processProposerLookahead(fork, allocator, epoch_cache, fork_state, &epoch_transition_cache);
                 },
+                .builder_pending_payments => try state_transition.processBuilderPendingPayments(fork, allocator, fork_state, epoch_cache),
+                .ptc_window => try state_transition.processPtcWindow(fork, allocator, epoch_cache, fork_state, &epoch_transition_cache),
             }
         }
     };

@@ -121,7 +121,7 @@ pub fn BlocksTestCase(comptime fork: ForkSeq) type {
                 .pre = undefined,
                 .post = undefined,
                 .blocks = undefined,
-                .bls_setting = loadBlsSetting(allocator, dir),
+                .bls_setting = try loadBlsSetting(allocator, dir),
             };
 
             // load pre state
@@ -188,6 +188,7 @@ pub fn BlocksTestCase(comptime fork: ForkSeq) type {
                     .electra => AnySignedBeaconBlock{ .full_electra = block },
                     .fulu => AnySignedBeaconBlock{ .full_fulu = block },
                     .gloas => AnySignedBeaconBlock{ .full_gloas = block },
+                    .heze => AnySignedBeaconBlock{ .full_heze = block },
                 };
                 const input_cached_state = if (result) |res| res else self.pre.cached_state;
                 {
@@ -230,12 +231,13 @@ pub fn BlocksTestCase(comptime fork: ForkSeq) type {
                 }
                 try expectEqualBeaconStates(post, actual.state);
             } else {
-                _ = self.process() catch |err| {
-                    if (err == error.SkipZigTest) {
-                        return err;
-                    }
-                    return;
+                const unexpected = self.process() catch |err| {
+                    return test_case.expectConsensusInvalid(err);
                 };
+                defer {
+                    unexpected.deinit();
+                    self.pre.allocator.destroy(unexpected);
+                }
                 return error.ExpectedError;
             }
         }

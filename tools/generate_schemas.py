@@ -14,11 +14,8 @@ VERSION = "v1.7.0-beta.4"
 COMMIT = "aa16bb4c156184e9548a997d53efaf2a228a6304"
 ROOT = Path(__file__).resolve().parents[1]
 
-# Spec-defined generalized indices, which upstream does not yet expose.
+# Spec-defined generalized index, which upstream does not yet expose.
 GINDICES = {
-    "CURRENT_SYNC_COMMITTEE_GINDEX_GLOAS": 2945,
-    "NEXT_SYNC_COMMITTEE_GINDEX_GLOAS": 2946,
-    "FINALIZED_ROOT_GINDEX_GLOAS": 735,
     "EXECUTION_BLOCK_HASH_GINDEX_GLOAS": 2856,
 }
 
@@ -51,8 +48,6 @@ class Generator:
             name = node.id
             if name in GINDICES:
                 return str(GINDICES[name])
-            if name == "PTC_SIZE":
-                return "ptc_size"
             if name in self.constants:
                 return f"constants.{name}"
             if name in self.preset_names:
@@ -132,12 +127,12 @@ class Generator:
             }:
                 fixed = base_name in {"Vector", "BitVector", "ByteVector"}
                 if base_name == "ProgressiveBitList":
-                    code = "ssz.ProgressiveBitListType()"
+                    code = "ssz.ProgressiveBitListType(.{})"
                 elif base_name in {"List", "Vector", "ProgressiveList"}:
                     child = self.reference(base.slice)
                     child_fixed = self.fixed[child]
                     if base_name == "ProgressiveList" and child == "Byte":
-                        code = '@import("progressive_bytes.zig").Type'
+                        code = "ssz.ProgressiveByteListType(.{})"
                     else:
                         constructor = "Fixed" if child_fixed else "Variable"
                         constructor += {
@@ -151,6 +146,8 @@ class Generator:
                             code += f", {bound}"
                             if child_fixed:
                                 code += ", .{}"
+                        else:
+                            code += ", .{}"
                         code += ")"
                     if base_name == "Vector":
                         fixed = child_fixed
@@ -173,6 +170,8 @@ def generate(spec_root, destination):
             (spec_root / "specs" / fork).rglob("*.md"),
             key=lambda p: ("beacon-chain" not in str(p), str(p)),
         )
+        if not paths:
+            raise ValueError(f"No specification Markdown found for {fork}: {spec_root}")
         for path in paths:
             for block in re.findall(r"```python\n(.*?)```", path.read_text(), re.S):
                 for node in ast.parse(block).body:
@@ -211,7 +210,6 @@ const ssz = @import("ssz");
 const constants = @import("constants");
 const preset_module = @import("preset");
 const preset = preset_module.preset;
-const ptc_size = if (preset_module.active_preset == .minimal) 16 else preset.PTC_SIZE;
 pub const primitive = @import("primitive");
 """
     destination.write_text(header + "\n".join(sections) + "\n")
