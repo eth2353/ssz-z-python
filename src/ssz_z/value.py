@@ -21,6 +21,21 @@ def input_bytes(data: bytes | bytearray | memoryview) -> bytes:
     return bytes(data)
 
 
+def _signature_bytes(signature):
+    if isinstance(signature, str):
+        if not signature.startswith("0x") or len(signature) != 194:
+            raise SSZError("Signature must contain exactly 96 bytes")
+        try:
+            signature = bytes.fromhex(signature[2:])
+        except ValueError as error:
+            raise SSZError("Invalid signature hex") from error
+    else:
+        signature = input_bytes(signature)
+    if len(signature) != 96:
+        raise SSZError("Signature must contain exactly 96 bytes")
+    return signature
+
+
 class _Layout:
     """Precompute field positions once, rather than traverse values for projections."""
 
@@ -50,6 +65,7 @@ class _Layout:
             for name, following in zip(variable, variable[1:], strict=False):
                 child, start, _ = self.fields[name]
                 self.fields[name] = (child, start, self.fields[following][1])
+            self.fixed_section_size = offset
             self.size = None if variable else offset
         else:
             self.size = None
@@ -67,6 +83,33 @@ class _Layout:
         else:
             start, end = offset, offset + child.size
         return child, data[start:end]
+
+    def container_parts(self, fields):
+        """Assemble validated field segments, deriving SSZ offsets from the schema.
+
+        Internal callers supply canonical encoded fields from validated values
+        or checked fixed-size scalars. Variable-field validation is not repeated.
+        """
+        if self.kind != "container" or fields.keys() != self.fields.keys():
+            raise ValueError("Encoded fields must match the container schema")
+        fixed, variable = [], []
+        offset = self.fixed_section_size
+        for name, (child, _, _) in self.fields.items():
+            parts = fields[name]
+            size = sum(map(len, parts))
+            if child.size is None:
+                fixed.append(struct.pack("<I", offset))
+                variable.extend(parts)
+                offset += size
+            else:
+                if size != child.size:
+                    raise SSZError(f"Invalid encoded size for {name}")
+                fixed.extend(parts)
+            if offset > MAX_INPUT_SIZE:
+                raise SSZError("Serialized output exceeds the input limit")
+        if self.fixed_section_size > MAX_INPUT_SIZE:
+            raise SSZError("Serialized output exceeds the input limit")
+        return (*fixed, *variable)
 
     def scalar(self, data):
         if self.kind == "uint":
@@ -148,24 +191,9 @@ class NativeValue:
         This wraps a signature; it does not perform BLS signing or verification.
         The returned value owns its bytes independently of this value's lifetime.
         """
-        if isinstance(signature, str):
-            if not signature.startswith("0x") or len(signature) != 194:
-                raise SSZError("Signature must contain exactly 96 bytes")
-            try:
-                signature = bytes.fromhex(signature[2:])
-            except ValueError as error:
-                raise SSZError("Invalid signature hex") from error
-        else:
-            signature = input_bytes(signature)
-        if len(signature) != 96:
-            raise SSZError("Signature must contain exactly 96 bytes")
-        data = self._ssz
+        signature = _signature_bytes(signature)
         target = self.codec._signed_codec
-        parts = (
-            (struct.pack("<I", 100), signature, data)
-            if self.codec._layout.size is None
-            else (data, signature)
-        )
+        parts = target._layout.container_parts({"message": (self._ssz,), "signature": (signature,)})
         size = sum(len(part) for part in parts)
         if size > MAX_INPUT_SIZE:
             raise SSZError(f"Signed output exceeds {MAX_INPUT_SIZE} bytes")

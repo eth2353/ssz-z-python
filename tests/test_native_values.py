@@ -230,6 +230,21 @@ def test_proposal_does_not_repeat_native_operations(monkeypatch):
     ]  # One validation, one body hash; signing/encoding reuse bytes.
 
 
+def test_contents_signature_and_output_boundaries(monkeypatch):
+    from ssz_z import value as implementation
+
+    codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
+    original = codec.serialize(codec.default())
+    proposal = BlockValue(codec.load_ssz(original))
+    for signature in (bytes(95), bytes(97), "0x" + "gg" * 96):
+        with pytest.raises(SSZError):
+            proposal.sign(signature)
+    monkeypatch.setattr(implementation, "MAX_INPUT_SIZE", len(original) + 50)
+    with pytest.raises(SSZError, match="exceeds"):
+        proposal.sign(bytes(96))
+    assert proposal.value.to_ssz() == original
+
+
 @pytest.mark.parametrize("fork", FORKS)
 def test_native_nested_json_order_and_binary_bits(fork):
     def reverse(value):

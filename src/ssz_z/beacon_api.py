@@ -3,9 +3,9 @@
 import struct
 from dataclasses import dataclass, field
 
-from ._native import MAX_INPUT_SIZE, Operation, SSZError
+from ._native import Operation
 from .types import get_type
-from .value import NativeValue, input_bytes
+from .value import NativeValue, _signature_bytes
 
 
 @dataclass(frozen=True)
@@ -86,32 +86,21 @@ class BlockValue:
         if self.value.codec.name != "BeaconBlockContents":
             signed = self.value.sign(signature)
         else:
-            if isinstance(signature, str):
-                if not signature.startswith("0x") or len(signature) != 194:
-                    raise SSZError("Signature must contain exactly 96 bytes")
-                try:
-                    signature = bytes.fromhex(signature[2:])
-                except ValueError as error:
-                    raise SSZError("Invalid signature hex") from error
-            else:
-                signature = input_bytes(signature)
-            if len(signature) != 96:
-                raise SSZError("Signature must contain exactly 96 bytes")
+            signature = _signature_bytes(signature)
             target = get_type(
                 "SignedBeaconBlockContents",
                 fork=self.value.codec.fork,
                 preset=self.value.codec.preset,
             )
-            data = self.value.to_ssz()
-            a, b, c = struct.unpack_from("<III", data)
-            parts = (
-                struct.pack("<III", a, b + 100, c + 100),
-                struct.pack("<I", 100),
-                signature,
-                memoryview(data)[a:],
+            data = memoryview(self.value.to_ssz())
+            fields = {
+                name: (self.value.codec._layout.field(data, name)[1],)
+                for name in self.value.codec._layout.fields
+            }
+            signed_block = target._layout.fields["signed_block"][0].container_parts(
+                {"message": fields.pop("block"), "signature": (signature,)}
             )
-            if sum(map(len, parts)) > MAX_INPUT_SIZE:
-                raise SSZError("Signed output exceeds the input limit")
+            parts = target._layout.container_parts({"signed_block": signed_block, **fields})
             signed = NativeValue._from_validated(target, b"".join(parts))
         result = BlockValue(signed)
         object.__setattr__(result, "_projection", self._projection)

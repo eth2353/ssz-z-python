@@ -180,7 +180,11 @@ class SSZType:
     def _signed_codec(self):
         target = get_type("Signed" + self.name, fork=self.fork, preset=self.preset)
         fields = target._schema.get("fields", {})
-        if tuple(fields) != ("message", "signature") or fields["message"] != self._schema:
+        if (
+            tuple(fields) != ("message", "signature")
+            or fields["message"] != self._schema
+            or fields["signature"] != {"kind": "bytevector", "length": 96}
+        ):
             raise ValueError("No compatible signed wrapper for this value")
         return target
 
