@@ -84,7 +84,7 @@ archive path traversal rejection.
 - Schema regeneration reproduces the committed generated source exactly.
 - Ruff lint/format and Zig formatting checks passed.
 
-Native ABI version is 1; Python and the three native libraries must be upgraded
+Native ABI version is 2; Python and the three native libraries must be upgraded
 together. See [the sampled performance report](performance/report.md) for the
 separate, limited timing comparison. No full benchmark was run for this change.
 

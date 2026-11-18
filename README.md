@@ -119,9 +119,24 @@ signed = proposal.sign(signature)            # attach an existing 96-byte BLS si
 publication_bytes = signed.value.to_ssz()    # immutable bytes, no additional copy
 ```
 
-For JSON production responses, use
-`proposal_type.load_json(response_bytes, wrapped=True)` to parse the REST
-`data` field directly in Zig. For a bare JSON value, omit `wrapped=True`.
+For Beacon API production responses, select the codec from the response metadata:
+
+```python
+from ssz_z.beacon_api import load_proposal_json, load_proposal_ssz
+
+response = load_proposal_json(response_bytes, preset="mainnet")
+proposal = response.proposal
+payload_value = response.metadata["execution_payload_value"]
+# For application/octet-stream responses:
+response = load_proposal_ssz(ssz_bytes, headers=response_headers, preset="mainnet")
+```
+
+The adapter preserves metadata as an immutable mapping, normalizes block values
+into integers, and rejects conflicting JSON/header metadata. JSON metadata is
+scanned in Zig; only the small metadata object is materialized in Python.
+The low-level `codec.load_json(text, wrapped=True)` remains available to extract
+only `data` using an explicitly selected codec; it does not retain metadata.
+For a bare JSON value, use `codec.load_json(text)`.
 `signed.value.to_json()` returns **wire JSON bytes**; pass those bytes to the HTTP
 client directly rather than JSON-encoding them again.
 
@@ -256,7 +271,7 @@ round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
 serialized bytes directly. Native calls release the GIL and use independent
 per-call arenas; dynamically returned buffers are copied into Python and freed
 before returning. The native writer transfers ownership of its output buffer
-to the caller. [native/bindings.h](native/bindings.h) documents ABI version 1.
+to the caller. [native/bindings.h](native/bindings.h) documents ABI version 2.
 Python and native libraries are built and installed together; the loader rejects
 a mismatched native ABI.
 

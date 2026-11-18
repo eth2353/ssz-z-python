@@ -125,6 +125,37 @@ pub fn readRest(comptime T: type, allocator: std.mem.Allocator, scanner: *std.js
     if (!found) return error.MissingData;
 }
 
+pub fn restMetadata(allocator: std.mem.Allocator, input: []const u8, out: *std.Io.Writer.Allocating) !void {
+    var scanner = std.json.Scanner.initCompleteInput(allocator, input);
+    defer scanner.deinit();
+    if (try scanner.next() != .object_begin) return error.InvalidJson;
+    var keys: std.StringHashMap(void) = .init(allocator);
+    var data_range: ?[2]usize = null;
+    var count: usize = 0;
+    try out.writer.writeAll("{\"metadata\":{");
+    while (try scanner.peekNextTokenType() != .object_end) {
+        const key = try string(&scanner, allocator);
+        const entry = try keys.getOrPut(key);
+        if (entry.found_existing) return error.DuplicateField;
+        _ = try scanner.peekNextTokenType();
+        const start = scanner.cursor;
+        try scanner.skipValue();
+        if (std.mem.eql(u8, key, "data")) {
+            data_range = .{ start, scanner.cursor };
+        } else {
+            if (count > 0) try out.writer.writeByte(',');
+            try std.json.Stringify.value(key, .{}, &out.writer);
+            try out.writer.writeByte(':');
+            try out.writer.writeAll(input[start..scanner.cursor]);
+            count += 1;
+        }
+    }
+    _ = try scanner.next();
+    if (try scanner.next() != .end_of_document) return error.TrailingJson;
+    const range = data_range orelse return error.MissingData;
+    try out.writer.print("}},\"data_start\":{d},\"data_end\":{d}}}", .{ range[0], range[1] });
+}
+
 pub fn write(comptime T: type, allocator: std.mem.Allocator, out: *std.Io.Writer.Allocating, value: *const T.Type) anyerror!void {
     switch (T.kind) {
         .uint => try out.writer.print("\"{d}\"", .{value.*}),

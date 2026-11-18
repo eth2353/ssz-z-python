@@ -25,6 +25,7 @@ class Operation(IntEnum):
     VALIDATE_SSZ = 6
     REST_JSON_TO_SSZ = 7
     BLOCK_PROJECTION = 8
+    REST_METADATA = 9
 
 
 class SSZError(ValueError):
@@ -48,7 +49,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 1:
+    if library.ssz_z_abi_version() != 2:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,

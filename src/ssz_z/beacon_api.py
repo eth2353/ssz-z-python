@@ -1,11 +1,15 @@
 """Beacon API block operations, separate from generic SSZ values."""
 
 import struct
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import cached_property
+from types import MappingProxyType
+from typing import Any
 
-from ._native import Operation
-from .types import get_type
-from .value import NativeValue, _signature_bytes
+from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
+from .types import _parse_json, get_type
+from .value import NativeValue, _signature_bytes, input_bytes
 
 
 @dataclass(frozen=True)
@@ -105,3 +109,93 @@ class BlockValue:
         result = BlockValue(signed)
         object.__setattr__(result, "_projection", self._projection)
         return result
+
+
+_HEADER_FIELDS = {
+    "eth-consensus-version": "version",
+    "eth-execution-payload-blinded": "execution_payload_blinded",
+    "eth-execution-payload-value": "execution_payload_value",
+    "eth-consensus-block-value": "consensus_block_value",
+    "eth-execution-payload-source": "execution_payload_source",
+}
+
+
+def _freeze(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(map(_freeze, value))
+    return value
+
+
+@dataclass(frozen=True)
+class BlockResponse:
+    """A decoded Beacon API payload and its immutable response metadata."""
+
+    value: NativeValue
+    metadata: Mapping[str, Any]
+
+    def __post_init__(self):
+        object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
+
+    @cached_property
+    def proposal(self) -> BlockValue:
+        return BlockValue(self.value)
+
+
+def _metadata_value(key, value):
+    if key in {"execution_payload_value", "consensus_block_value"}:
+        if isinstance(value, str) and value.isascii() and value.isdecimal() and len(value) <= 78:
+            value = int(value)
+        if type(value) is not int or not 0 <= value < 1 << 256:
+            raise SSZError(f"Invalid {key} metadata")
+    return value
+
+
+def _response_metadata(metadata, headers):
+    metadata = {key: _metadata_value(key, value) for key, value in metadata.items()}
+    for header, value in (headers or {}).items():
+        key = _HEADER_FIELDS.get(header.lower())
+        if key is None:
+            continue
+        if key == "execution_payload_blinded":
+            if value not in {"true", "false"}:
+                raise SSZError(f"Invalid {header} header")
+            value = value == "true"
+        value = _metadata_value(key, value)
+        if key in metadata and metadata[key] != value:
+            raise SSZError(f"Conflicting response metadata for {key}")
+        metadata[key] = value
+    if metadata.get("version") not in {"electra", "fulu"}:
+        raise SSZError("Expected Electra or Fulu response version")
+    if type(metadata.get("execution_payload_blinded")) is not bool:
+        raise SSZError("Missing or invalid execution_payload_blinded metadata")
+    return metadata
+
+
+def _proposal_codec(metadata, preset):
+    return get_type(
+        "BlindedBeaconBlock" if metadata["execution_payload_blinded"] else "BeaconBlockContents",
+        fork=metadata["version"],
+        preset=preset,
+    )
+
+
+def load_proposal_json(text, *, preset="mainnet", headers=None) -> BlockResponse:
+    """Select a proposal codec from JSON metadata without decoding its data in Python."""
+    if isinstance(text, str):
+        if len(text) > MAX_INPUT_SIZE:
+            raise SSZError("JSON input too large")
+        text = text.encode("utf-8")
+    text = input_bytes(text)
+    envelope = _parse_json(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
+    metadata = _response_metadata(envelope["metadata"], headers)
+    codec = _proposal_codec(metadata, preset)
+    value = codec.load_json(text[envelope["data_start"] : envelope["data_end"]])
+    return BlockResponse(value, metadata)
+
+
+def load_proposal_ssz(data, *, headers, preset="mainnet") -> BlockResponse:
+    """Select the SSZ proposal codec using Beacon API HTTP response headers."""
+    metadata = _response_metadata({}, headers)
+    return BlockResponse(_proposal_codec(metadata, preset).load_ssz(data), metadata)

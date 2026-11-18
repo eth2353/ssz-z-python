@@ -15,6 +15,7 @@ const Operation = enum(u8) {
     validate_ssz = 6,
     rest_json_to_ssz = 7,
     block_projection = 8,
+    rest_metadata = 9,
     // Keep unknown bytes representable so they return an ABI error, not a trap.
     _,
 };
@@ -58,7 +59,7 @@ export fn ssz_z_free(ptr: [*]u8, len: usize) void {
 }
 
 export fn ssz_z_abi_version() u32 {
-    return 1;
+    return 2;
 }
 
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
@@ -95,6 +96,7 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
 
 fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
     switch (operation) {
+        .rest_metadata => return json_codec.restMetadata(allocator, input, writer),
         .type_schema => {
             var json: std.json.Stringify = .{ .writer = &writer.writer };
             return schema(T, &json);
