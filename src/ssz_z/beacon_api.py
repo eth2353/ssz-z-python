@@ -28,6 +28,8 @@ class BlockValue:
     def __post_init__(self):
         if not isinstance(self.value, NativeValue):
             raise TypeError("BlockValue requires a NativeValue")
+        if self.value.codec.fork == "gloas" and self.value.codec.name == "BeaconBlockContents":
+            raise ValueError("Use GloasProposal for Gloas block contents")
         self._block_path()
 
     def _project_block(self) -> tuple[bytes, bytes]:
@@ -90,25 +92,117 @@ class BlockValue:
         if self.value.codec.name != "BeaconBlockContents":
             signed = self.value.sign(signature)
         else:
-            signature = _signature_bytes(signature)
-            target = get_type(
-                "SignedBeaconBlockContents",
-                fork=self.value.codec.fork,
-                preset=self.value.codec.preset,
+            signed = _signed_contents(
+                self.value, "block", "SignedBeaconBlockContents", "signed_block", signature
             )
-            data = memoryview(self.value.to_ssz())
-            fields = {
-                name: (self.value.codec._layout.field(data, name)[1],)
-                for name in self.value.codec._layout.fields
-            }
-            signed_block = target._layout.fields["signed_block"][0].container_parts(
-                {"message": fields.pop("block"), "signature": (signature,)}
-            )
-            parts = target._layout.container_parts({"signed_block": signed_block, **fields})
-            signed = NativeValue._from_validated(target, b"".join(parts))
         result = BlockValue(signed)
         object.__setattr__(result, "_projection", self._projection)
         return result
+
+
+def _signed_contents(value, message_field, target_name, signed_field, signature):
+    signature = _signature_bytes(signature)
+    target = get_type(target_name, fork=value.codec.fork, preset=value.codec.preset)
+    message_schema = target._schema["fields"][signed_field]["fields"]["message"]
+    if message_schema != value.codec._schema["fields"][message_field]:
+        raise ValueError("Incompatible signed contents schema")
+    data = memoryview(value.to_ssz())
+    source = value.codec._layout
+    message = (source.field(data, message_field)[1],)
+    signed = target._layout.fields[signed_field][0].container_parts(
+        {"message": message, "signature": (signature,)}
+    )
+    fields = {
+        name: (source.field(data, name)[1],)
+        for name in target._layout.fields
+        if name != signed_field
+    }
+    parts = target._layout.container_parts({signed_field: signed, **fields})
+    return NativeValue._from_validated(target, b"".join(parts))
+
+
+@dataclass(frozen=True)
+class GloasProposal:
+    """Separate Gloas beacon-block publication from execution-payload revelation."""
+
+    value: NativeValue
+
+    def __post_init__(self):
+        if not isinstance(self.value, NativeValue):
+            raise TypeError("GloasProposal requires a NativeValue")
+        if self.value.codec.fork != "gloas" or self.value.codec.name not in {
+            "BeaconBlock",
+            "BeaconBlockContents",
+        }:
+            raise ValueError("Expected a Gloas block or block contents")
+
+    @property
+    def payload_included(self) -> bool:
+        return self.value.codec.name == "BeaconBlockContents"
+
+    @cached_property
+    def block(self) -> BlockValue:
+        if not self.payload_included:
+            return BlockValue(self.value)
+        codec = get_type("BeaconBlock", fork="gloas", preset=self.value.codec.preset)
+        if self.value.codec._schema["fields"]["block"] != codec._schema:
+            raise ValueError("Incompatible Gloas block schema")
+        _, data = self.value.codec._layout.field(memoryview(self.value.to_ssz()), "block")
+        return BlockValue(NativeValue._from_validated(codec, bytes(data)))
+
+    @property
+    def is_self_build(self) -> bool:
+        return self.block.builder_index == (1 << 64) - 1
+
+    def sign_block(self, signature) -> NativeValue:
+        """Attach a block signature; the publication contains only the signed block."""
+        return self.block.sign(signature).value
+
+    def sign_payload(self, signature, *, envelope: NativeValue | None = None) -> NativeValue:
+        """Attach a payload signature, retaining proof/blob data for stateless publication.
+
+        A stateful proposal requires the caller to fetch its envelope from the
+        producing beacon node and pass it explicitly. Builder bids are revealed
+        by the builder and cannot use this method.
+        """
+        if not self.is_self_build:
+            raise ValueError("The builder must reveal the execution payload for a builder bid")
+        if self.payload_included:
+            if envelope is not None:
+                raise ValueError("The proposal already includes its execution payload envelope")
+            source, prefix = self.value, ("execution_payload_envelope",)
+        else:
+            if envelope is None:
+                raise ValueError(
+                    "Fetch the execution payload envelope from the producing beacon node"
+                )
+            codec = get_type(
+                "ExecutionPayloadEnvelope", fork="gloas", preset=self.value.codec.preset
+            )
+            if not isinstance(envelope, NativeValue):
+                raise TypeError("envelope must be a NativeValue")
+            codec._check_value(envelope)
+            source, prefix = envelope, ()
+        expected = {
+            ("beacon_block_root",): self.block.block_hash_tree_root(),
+            ("parent_beacon_block_root",): self.block.value.field("parent_root"),
+            ("builder_index",): self.block.builder_index,
+            ("payload", "slot_number"): self.block.slot,
+        }
+        for path, value in expected.items():
+            if source.field((*prefix, *path)) != value:
+                raise SSZError(
+                    f"Execution payload envelope does not match proposal: {'.'.join(path)}"
+                )
+        if self.payload_included:
+            return _signed_contents(
+                self.value,
+                "execution_payload_envelope",
+                "SignedExecutionPayloadEnvelopeContents",
+                "signed_execution_payload_envelope",
+                signature,
+            )
+        return envelope.sign(signature)
 
 
 _HEADER_FIELDS = {
@@ -117,6 +211,8 @@ _HEADER_FIELDS = {
     "eth-execution-payload-value": "execution_payload_value",
     "eth-consensus-block-value": "consensus_block_value",
     "eth-execution-payload-source": "execution_payload_source",
+    "eth-execution-payload-included": "execution_payload_included",
+    "eth-builder-url": "builder_url",
 }
 
 
@@ -139,8 +235,12 @@ class BlockResponse:
         object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
 
     @cached_property
-    def proposal(self) -> BlockValue:
-        return BlockValue(self.value)
+    def proposal(self) -> "BlockValue | GloasProposal":
+        return (
+            GloasProposal(self.value)
+            if self.value.codec.fork == "gloas"
+            else BlockValue(self.value)
+        )
 
 
 def _metadata_value(key, value):
@@ -158,7 +258,7 @@ def _response_metadata(metadata, headers):
         key = _HEADER_FIELDS.get(header.lower())
         if key is None:
             continue
-        if key == "execution_payload_blinded":
+        if key in {"execution_payload_blinded", "execution_payload_included"}:
             if value not in {"true", "false"}:
                 raise SSZError(f"Invalid {header} header")
             value = value == "true"
@@ -166,19 +266,26 @@ def _response_metadata(metadata, headers):
         if key in metadata and metadata[key] != value:
             raise SSZError(f"Conflicting response metadata for {key}")
         metadata[key] = value
-    if metadata.get("version") not in {"electra", "fulu"}:
-        raise SSZError("Expected Electra or Fulu response version")
-    if type(metadata.get("execution_payload_blinded")) is not bool:
-        raise SSZError("Missing or invalid execution_payload_blinded metadata")
+    fork = metadata.get("version")
+    if not isinstance(fork, str) or fork not in {"electra", "fulu", "gloas"}:
+        raise SSZError("Expected Electra, Fulu, or Gloas response version")
+    flag = "execution_payload_included" if fork == "gloas" else "execution_payload_blinded"
+    if type(metadata.get(flag)) is not bool:
+        raise SSZError(f"Missing or invalid {flag} metadata")
+    if fork == "gloas" and "execution_payload_blinded" in metadata:
+        if metadata["execution_payload_blinded"] is not False:
+            raise SSZError("Gloas proposals cannot use blinded block metadata")
     return metadata
 
 
 def _proposal_codec(metadata, preset):
-    return get_type(
-        "BlindedBeaconBlock" if metadata["execution_payload_blinded"] else "BeaconBlockContents",
-        fork=metadata["version"],
-        preset=preset,
-    )
+    if metadata["version"] == "gloas":
+        name = "BeaconBlockContents" if metadata["execution_payload_included"] else "BeaconBlock"
+    else:
+        name = (
+            "BlindedBeaconBlock" if metadata["execution_payload_blinded"] else "BeaconBlockContents"
+        )
+    return get_type(name, fork=metadata["version"], preset=preset)
 
 
 def load_proposal_json(text, *, preset="mainnet", headers=None) -> BlockResponse:

@@ -30,8 +30,8 @@ archives and passed under both Python 3.12.16 and Python 3.15.2:
 
 Each case verified decoding, byte-identical encoding, the published hash tree
 root, JSON input conversion, and JSON output round trips. The run also included
-75 bundled official smoke vectors, 108 binding tests, one schema-generator
-regression test, and three dependency-fetch tests: **24,251 passed**.
+75 bundled official smoke vectors, 148 binding/API tests, one schema-generator
+regression test, and three dependency-fetch tests: **24,291 passed**.
 Every external case also exercised the SSZ-backed value loaders for both JSON
 and SSZ, checking exact encoded bytes and roots.
 
@@ -42,8 +42,8 @@ Archive SHA-256 hashes:
 
 ## Binding checks
 
-The suite without external vector files passed **187 tests**, including the
-75 bundled vectors and 112 local tests. It covers every exported codec's default
+The suite without external vector files passed **227 tests**, including the
+75 bundled vectors and 152 local tests. It covers every exported codec's default
 round trip across all nine fork/preset combinations; integer boundaries,
 malformed JSON, offsets, lengths, bitfields, deterministic SSZ mutations,
 concurrent calls, preset-specific sizes, and Gloas progressive hashing. Beacon
@@ -78,7 +78,7 @@ archive path traversal rejection.
 - Building the source distribution fetches and verifies uncached sources.
 - Wheel contains all three preset libraries and has no runtime dependencies.
 - Clean Python 3.12.16 and Python 3.15.2 installations of the wheel passed SSZ
-  round-trip and root checks for all 1,368 canonical fork/preset codecs.
+  round-trip and root checks for all 1,374 canonical fork/preset codecs.
 - Wheel metadata requires Python 3.12 or newer.
 - Wheel tag: `py3-none-macosx_11_0_arm64`; native deployment target is macOS 11.0.
 - Schema regeneration reproduces the committed generated source exactly.
@@ -90,3 +90,19 @@ separate, limited timing comparison. No full benchmark was run for this change.
 
 CI tests and builds on Linux with Python 3.12 and Python 3.15. These local checks
 ran on macOS arm64; the GitHub Actions workflow was not executed on this host.
+
+## Beacon API adapters
+
+Block projections and API envelope signing live in `ssz_z.beacon_api`, separate
+from generic `NativeValue`. Signed-container offsets are schema-derived; the
+Electra/Fulu proposal flow still uses one validation and one body projection,
+with no extra native calls for signing. The upstream blinded types matched all
+18 previous schemas, default encodings, and roots byte-for-byte, and the
+populated full/blinded root tests passed in all presets.
+
+Response tests cover metadata-based full/blinded/Gloas codec selection for JSON
+and SSZ, header conflicts, immutable metadata, duplicate/escaped keys, Unicode
+byte ranges, and avoiding Python materialization of blob data. Gloas tests
+cover bare signed-block publication, stateful and stateless payload revelation,
+preserved blobs/proofs, builder-bid rejection, and mismatched envelope roots,
+parent roots, builder indices, and slots.

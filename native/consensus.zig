@@ -1553,4 +1553,7 @@ pub const gloas = struct {
         message: ProposerPreferences,
         signature: BLSSignature,
     });
+    const api = @import("beacon_api.zig").GloasTypes(@This());
+    pub const BeaconBlockContents = api.BeaconBlockContents;
+    pub const SignedExecutionPayloadEnvelopeContents = api.SignedExecutionPayloadEnvelopeContents;
 };

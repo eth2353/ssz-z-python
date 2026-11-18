@@ -30,3 +30,26 @@ pub fn Types(comptime Consensus: type, comptime is_fulu: bool) type {
         pub const SignedBlindedBeaconBlock = Upstream.SignedBlindedBeaconBlock;
     };
 }
+
+pub fn GloasTypes(comptime Consensus: type) type {
+    const Blob = ssz.ByteVectorType(constants.BYTES_PER_FIELD_ELEMENT * preset.FIELD_ELEMENTS_PER_BLOB);
+    const Blobs = ssz.FixedListType(Blob, preset.MAX_BLOB_COMMITMENTS_PER_BLOCK, .{});
+    const KZGProofs = ssz.FixedListType(
+        ssz.ByteVectorType(48),
+        preset.MAX_BLOB_COMMITMENTS_PER_BLOCK * preset.FIELD_ELEMENTS_PER_EXT_BLOB,
+        .{},
+    );
+    return struct {
+        pub const BeaconBlockContents = ssz.VariableContainerType(struct {
+            block: Consensus.BeaconBlock,
+            execution_payload_envelope: Consensus.ExecutionPayloadEnvelope,
+            kzg_proofs: KZGProofs,
+            blobs: Blobs,
+        });
+        pub const SignedExecutionPayloadEnvelopeContents = ssz.VariableContainerType(struct {
+            signed_execution_payload_envelope: Consensus.SignedExecutionPayloadEnvelope,
+            kzg_proofs: KZGProofs,
+            blobs: Blobs,
+        });
+    };
+}

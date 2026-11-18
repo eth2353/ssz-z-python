@@ -195,6 +195,34 @@ Schemas follow [ethereum/beacon-APIs](https://github.com/ethereum/beacon-APIs/tr
 with the revision recorded in `UPSTREAM.json` and implementation in
 [native/beacon_api.zig](native/beacon_api.zig).
 
+### Gloas production and payload revelation
+
+Gloas uses a separate `GloasProposal` adapter. Response metadata selects either
+a bare `BeaconBlock` or `BeaconBlockContents` containing the block, execution
+payload envelope, proofs, and blobs. Block publication always uses the bare
+`SignedBeaconBlock`; there is no Gloas `SignedBeaconBlockContents` codec.
+
+```python
+response = load_proposal_json(response_bytes, preset="mainnet")
+proposal = response.proposal  # GloasProposal for version="gloas"
+block_root = proposal.block.block_hash_tree_root()
+signed_block = proposal.sign_block(block_signature)
+block_publication_bytes = signed_block.to_ssz()
+
+if proposal.is_self_build and proposal.payload_included:
+    signed_payload_contents = proposal.sign_payload(payload_signature)
+    payload_publication_bytes = signed_payload_contents.to_ssz()
+```
+
+Publish the signed block before revealing its payload. For a stateful self-build,
+fetch the `ExecutionPayloadEnvelope` from the producing beacon node and pass its
+`NativeValue` to `proposal.sign_payload(signature, envelope=envelope)`. This
+returns a bare signed envelope for that node. Stateless contents retain their
+proofs and blobs in `SignedExecutionPayloadEnvelopeContents`. The adapter checks
+that the envelope's block root, parent root, builder index, and slot match the
+proposal. Builder bids leave payload revelation to the builder and reject
+`sign_payload()`. These methods attach supplied signatures, without BLS signing.
+
 ## Specification compatibility
 
 The SSZ algorithms come from Lodestar's pinned `unstable` revision. Consensus schemas

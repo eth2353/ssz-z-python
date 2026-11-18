@@ -200,6 +200,10 @@ def generate(spec_root, destination, lodestar_root=None):
                 "SignedBlindedBeaconBlock",
             ):
                 body += f"\npub const {name} = api.{name};"
+        else:
+            body += '\nconst api = @import("beacon_api.zig").GloasTypes(@This());'
+            for name in ("BeaconBlockContents", "SignedExecutionPayloadEnvelopeContents"):
+                body += f"\npub const {name} = api.{name};"
         sections.append(f"pub const {fork} = struct {{\n{body}\n}};")
     header = f"""//! Generated from ethereum/consensus-specs {VERSION} ({COMMIT}).
 //! Regenerate with tools/generate_schemas.py. The engine is Lodestar-Z SSZ.
