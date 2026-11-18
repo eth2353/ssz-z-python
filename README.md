@@ -181,6 +181,8 @@ Signed contents use `signed_block` instead of `block`. Blinded bodies replace
 `execution_payload` with `execution_payload_header`, preserving field order and
 all other body fields. A header containing the full payload's transaction and
 withdrawal roots produces the same body and block roots as the full block.
+The three blinded codecs come directly from the pinned upstream Zig types;
+the bindings define only the additional Beacon API contents containers.
 
 The contents SSZ root includes the proofs and blobs. To obtain the block root
 for signing, hash the contained `BeaconBlock` rather than the contents envelope.

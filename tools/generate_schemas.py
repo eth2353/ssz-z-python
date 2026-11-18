@@ -208,7 +208,7 @@ const ssz = @import("ssz");
 const constants = @import("constants");
 const preset_module = @import("preset");
 const preset = preset_module.preset;
-pub const primitive = @import("primitive");
+pub const primitive = @import("upstream").primitive;
 """
     destination.write_text(header + "\n".join(sections) + "\n")
 
