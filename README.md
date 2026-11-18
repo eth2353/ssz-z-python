@@ -37,6 +37,20 @@ python -m pip install -e '.[test]'
 python -m pytest
 ```
 
+Install the development tools and enable the commit hooks:
+
+```sh
+python -m pip install -e '.[dev]'
+pre-commit install
+pre-commit run --all-files --show-diff-on-failure
+```
+
+With uv, run the checks using `uvx pre-commit run --all-files --show-diff-on-failure`.
+The hooks check file syntax and whitespace, lint and format Python with Ruff,
+keep `uv.lock` current, check GitHub Actions with zizmor, and format Zig with
+the build's pinned Zig version. Official test vectors are excluded to preserve
+the upstream files.
+
 CI tests and builds the package on Linux with Python 3.12 and 3.15.
 
 ## Use

@@ -26,5 +26,3 @@
      6125    0.001    0.000    0.002    0.000 <frozen abc>:117(__instancecheck__)
       150    0.001    0.000    0.001    0.000 /Users/luca/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/ctypes/__init__.py:524(string_at)
        75    0.001    0.000    0.001    0.000 {method 'decode' of 'bytes' objects}
-
-

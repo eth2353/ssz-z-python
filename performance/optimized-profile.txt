@@ -26,5 +26,3 @@
      4900    0.001    0.000    0.001    0.000 <frozen abc>:117(__instancecheck__)
      4100    0.001    0.000    0.001    0.000 {method 'fullmatch' of 're.Pattern' objects}
      4900    0.001    0.000    0.001    0.000 {built-in method _abc._abc_instancecheck}
-
-
