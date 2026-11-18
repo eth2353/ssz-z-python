@@ -26,32 +26,32 @@ offline. Run `python tools/fetch_native.py` to populate the cache ahead of time.
 No system Zig installation, Node.js, or Rust is required. Linux x86 builds also need a
 system assembler (GNU binutils), as required by the upstream assembly backend.
 
-A built wheel has no Python runtime dependencies and requires no compiler.
+A built wheel requires `msgspec>=0.22` at runtime and requires no compiler.
 The wheel contains native code and is specific to its operating system and CPU
 architecture; its C ABI is independent of the CPython version.
 
 For development:
 
 ```sh
-python -m pip install -e '.[test]'
-python -m pytest
+uv sync --locked
+uv run --locked pytest
 ```
 
 Install the development tools and enable the commit hooks:
 
 ```sh
-python -m pip install -e '.[dev]'
-pre-commit install
-pre-commit run --all-files --show-diff-on-failure
+uv run --locked pre-commit install
+uv run --locked pre-commit run --all-files --show-diff-on-failure
 ```
 
-With uv, run the checks using `uvx pre-commit run --all-files --show-diff-on-failure`.
+The single `dev` dependency group includes the test tools and pinned Zig compiler.
 The hooks check file syntax and whitespace, lint and format Python with Ruff,
 keep `uv.lock` current, check GitHub Actions with zizmor, and format Zig with
 the build's pinned Zig version. Official test vectors are excluded to preserve
 the upstream files.
 
-CI tests and builds the package on Linux with Python 3.12 and 3.15.
+CI tests on Linux and macOS with Python 3.12 and 3.15 using locked uv environments.
+It also builds an sdist and wheel with `uv build` and tests the installed wheel.
 
 ## Use
 
@@ -275,7 +275,7 @@ curl -fL https://github.com/ethereum/consensus-specs/releases/download/v1.7.0-be
 curl -fL https://github.com/ethereum/consensus-specs/releases/download/v1.7.0-beta.4/mainnet.tar.gz -o /tmp/mainnet.tar.gz
 python tools/extract_vectors.py /tmp/minimal.tar.gz fixtures
 python tools/extract_vectors.py /tmp/mainnet.tar.gz fixtures
-python -m pytest -m spec
+uv run --locked pytest -m spec
 ```
 
 Use `--cases-per-suite 2` when extracting for a smaller sample. Set
@@ -287,8 +287,7 @@ exported type in all nine fork/preset combinations.
 ## Build and architecture
 
 ```sh
-python -m pip install build
-python -m build
+uv build
 ```
 
 A source distribution includes the bindings, dependency pins, checksums, and
@@ -296,8 +295,8 @@ third-party license notices. Building it fetches any uncached dependencies and
 produces a platform wheel with the three shared libraries. To compile Zig directly:
 
 ```sh
-python -m ziglang build -Doptimize=ReleaseSafe -Dcpu=baseline
-python -m ziglang fmt --check build.zig native
+uv run --locked python -m ziglang build -Doptimize=ReleaseSafe -Dcpu=baseline
+uv run --locked python -m ziglang fmt --check build.zig native
 ```
 
 `-Dpreset=minimal` builds only that preset. `zig-out` is for direct Zig builds;

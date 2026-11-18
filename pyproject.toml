@@ -18,9 +18,16 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[project.optional-dependencies]
-test = ["pytest>=8", "pyyaml>=6", "python-snappy>=0.7"]
-dev = ["ssz-z-python[test]", "build>=1", "pre-commit>=4", "ruff>=0.11"]
+[dependency-groups]
+dev = [
+    "pre-commit>=4",
+    "pytest>=8",
+    "pytest-cov>=6",
+    "python-snappy>=0.7",
+    "pyyaml>=6",
+    "ruff>=0.11",
+    "ziglang==0.16.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -29,6 +36,8 @@ where = ["src"]
 ssz_z = ["py.typed", "_native/*"]
 
 [tool.uv]
+required-version = "~=0.13.5"
+exclude-newer = "7 days"
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
@@ -44,6 +53,7 @@ cache-keys = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["spec: official consensus SSZ static vectors"]
 
 [tool.ruff]
