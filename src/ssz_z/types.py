@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from typing import Any
 
+from ._json import decoder as _JSON_DECODER
+from ._json import encoder as _JSON_ENCODER
 from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, Operation, SSZError, call
 from .value import NativeValue, _Layout, input_bytes
 
@@ -129,13 +131,13 @@ class SSZType:
             self._check_value(value)
             return value.to_ssz()
         normalized = _normalize(self._schema, value, self.name)
-        encoded = json.dumps(normalized, separators=(",", ":"), ensure_ascii=True).encode()
+        encoded = _JSON_ENCODER.encode(normalized)
         return self._call(Operation.JSON_TO_SSZ, encoded)
 
     def deserialize(self, data: bytes | bytearray | memoryview) -> Any:
         """Validate and decode SSZ into integers, bytes, dicts and lists."""
         encoded = self._call(Operation.SSZ_TO_JSON, input_bytes(data))
-        return _normalize(self._schema, json.loads(encoded), self.name, python=True)
+        return _normalize(self._schema, _JSON_DECODER.decode(encoded), self.name, python=True)
 
     def from_json(self, value: Any) -> Any:
         """Decode a JSON-compatible value or JSON text into a Python value."""
@@ -163,7 +165,7 @@ class SSZType:
     def default(self) -> Any:
         """Return an independent, zero/default Python value."""
         encoded = self._call(Operation.DEFAULT_JSON)
-        return _normalize(self._schema, json.loads(encoded), self.name, python=True)
+        return _normalize(self._schema, _JSON_DECODER.decode(encoded), self.name, python=True)
 
     def hash_tree_root(self, value: Any) -> bytes:
         """Return the 32-byte SSZ root of a Python value."""
@@ -229,7 +231,7 @@ def _check(fork: str, preset: str) -> None:
 def list_types(*, fork: str = "gloas", preset: str = "mainnet") -> tuple[str, ...]:
     """List the canonical SSZ type names for a fork and preset."""
     _check(fork, preset)
-    return tuple(json.loads(call(preset, fork, "", Operation.LIST_TYPES)))
+    return tuple(_JSON_DECODER.decode(call(preset, fork, "", Operation.LIST_TYPES)))
 
 
 @lru_cache(maxsize=4096)
@@ -242,5 +244,5 @@ def get_type(name: str, *, fork: str = "gloas", preset: str = "mainnet") -> SSZT
             namespace = "primitive"
         else:
             raise ValueError(f"Unknown SSZ type {name!r} for {fork}/{preset}")
-    schema = json.loads(call(preset, namespace, name, Operation.TYPE_SCHEMA))
+    schema = _JSON_DECODER.decode(call(preset, namespace, name, Operation.TYPE_SCHEMA))
     return SSZType(name, namespace, preset, schema)

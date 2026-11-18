@@ -1,11 +1,11 @@
 """Immutable SSZ-backed values with Python-managed lifetimes."""
 
 import hashlib
-import json
 import struct
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ._json import decoder as _JSON_DECODER
 from ._native import MAX_INPUT_SIZE, Operation, SSZError
 
 if TYPE_CHECKING:
@@ -164,7 +164,7 @@ class NativeValue:
 
     def to_json_value(self) -> Any:
         """Materialize a JSON-compatible value; to_json() is the wire fast path."""
-        return json.loads(self.to_json())
+        return _JSON_DECODER.decode(self.to_json())
 
     def hash_tree_root(self) -> bytes:
         root = self._root
