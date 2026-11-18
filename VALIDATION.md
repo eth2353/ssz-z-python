@@ -8,9 +8,12 @@ Verified locally on macOS arm64 against these pinned sources:
 - Zig 0.16.0, ReleaseSafe, baseline CPU.
 
 The November 18, 2026 refresh follows development from the archived Lodestar-Z
-repository into the active Lodestar monorepo. All 946 vendored files were
-compared byte-for-byte against the pinned archive. There are no local native
-patches. The bindings use upstream's progressive byte-list type, minimal
+repository into the active Lodestar monorepo. Native sources are fetched from
+commit-pinned archives, checked against SHA-256 hashes in `UPSTREAM.json`, and
+cached under `build/deps`. Downloaded sources were compared byte-for-byte with
+the previously validated snapshots before removing `vendor/`. Third-party
+license notices remain in `licenses/`. There are no local native patches.
+The bindings use upstream's progressive byte-list type, minimal
 `PTC_SIZE=16`, and Gloas sync-committee/finality generalized indices directly.
 The hashtree dependencies remain at the revisions pinned by upstream.
 
@@ -27,8 +30,8 @@ archives and passed under both Python 3.12.16 and Python 3.15.2:
 
 Each case verified decoding, byte-identical encoding, the published hash tree
 root, JSON input conversion, and JSON output round trips. The run also included
-75 bundled official smoke vectors, 108 binding tests, and one schema-generator
-regression test: **24,248 passed**.
+75 bundled official smoke vectors, 108 binding tests, one schema-generator
+regression test, and three dependency-fetch tests: **24,251 passed**.
 Every external case also exercised the SSZ-backed value loaders for both JSON
 and SSZ, checking exact encoded bytes and roots.
 
@@ -39,8 +42,8 @@ Archive SHA-256 hashes:
 
 ## Binding checks
 
-The suite without external vector files passed **184 tests**, including the
-75 bundled vectors and 109 local tests. It covers every exported codec's default
+The suite without external vector files passed **187 tests**, including the
+75 bundled vectors and 112 local tests. It covers every exported codec's default
 round trip across all nine fork/preset combinations; integer boundaries,
 malformed JSON, offsets, lengths, bitfields, deterministic SSZ mutations,
 concurrent calls, preset-specific sizes, and Gloas progressive hashing. Beacon
@@ -63,12 +66,16 @@ local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
 Gnosis was already present in the previous upstream pin and remains available
 in the active source. Schema generation now rejects an incomplete specification
 checkout without overwriting the existing generated file.
+Dependency-fetch tests cover offline cache reuse, checksum rejection, and
+archive path traversal rejection.
 
 ## Packaging
 
 - Editable installation succeeded.
 - Built a source distribution and then built a wheel from that distribution.
-- Source distribution contains native source and no prebuilt native binaries.
+- Source distribution contains bindings, dependency pins/checksums, and license
+  notices, with no dependency source snapshots or prebuilt native binaries.
+- Building the source distribution fetches and verifies uncached sources.
 - Wheel contains all three preset libraries and has no runtime dependencies.
 - Clean Python 3.12.16 and Python 3.15.2 installations of the wheel passed SSZ
   round-trip and root checks for all 1,368 canonical fork/preset codecs.

@@ -6,10 +6,10 @@ Supports **Electra, Fulu, and Gloas**, each with **mainnet, minimal, and gnosis*
 All three presets can be used in the same Python process.
 
 Lodestar-Z was archived on October 30, 2026; development continues in the
-Lodestar monorepo on `unstable`. This package vendors its Zig source at
-`0ac7778d7034693a0818296dbe717f2999576ab1` in `vendor/lodestar-z`.
-Exact source revisions and licenses are recorded in
-[vendor/UPSTREAM.json](vendor/UPSTREAM.json).
+Lodestar monorepo on `unstable`. This package pins its Zig source at
+`0ac7778d7034693a0818296dbe717f2999576ab1`.
+Exact source revisions, archive checksums, and licenses are recorded in
+[UPSTREAM.json](UPSTREAM.json). No upstream source is vendored or patched.
 
 ## Install
 
@@ -19,9 +19,11 @@ python -m pip install .
 
 Python 3.12 or newer is required. Source builds install Zig **0.16.0** through the
 `ziglang` build dependency and compile three shared libraries in `ReleaseSafe`
-mode with a baseline CPU target. No system Zig installation, Node.js, Rust, or
-network access from Zig is required. Vendored source includes the SSZ engine,
-SHA-256 wrapper, and native hashtree dependency. Linux x86 builds also need a
+mode with a baseline CPU target. The first source build downloads the three
+commit-pinned native dependencies over HTTPS and verifies their SHA-256 hashes.
+Sources are cached under `build/deps`; subsequent builds can reuse this cache
+offline. Run `python tools/fetch_native.py` to populate the cache ahead of time.
+No system Zig installation, Node.js, or Rust is required. Linux x86 builds also need a
 system assembler (GNU binutils), as required by the upstream assembly backend.
 
 A built wheel has no Python runtime dependencies and requires no compiler.
@@ -170,7 +172,7 @@ proof list uses `FIELD_ELEMENTS_PER_EXT_BLOB * MAX_BLOB_COMMITMENTS_PER_BLOCK`
 commitment, and proof counts belongs to the caller's consensus validation.
 
 Schemas follow [ethereum/beacon-APIs](https://github.com/ethereum/beacon-APIs/tree/01e99a6530b22941f619bde525cbf8bb61991d42),
-with the revision recorded in `vendor/UPSTREAM.json` and implementation in
+with the revision recorded in `UPSTREAM.json` and implementation in
 [native/beacon_api.zig](native/beacon_api.zig).
 
 ## Specification compatibility
@@ -190,7 +192,7 @@ parsing. No specification code runs during generation. The generated
 
 Fork codecs come directly from these generated, vector-verified schemas; there
 is no fallback to upstream consensus layouts or legacy type names. Gloas
-remains a draft; later releases may change layouts and roots. The vendored SSZ
+remains a draft; later releases may change layouts and roots. The upstream SSZ
 engine is unmodified; upstream now includes the progressive-container compiler
 quota fix and progressive byte-list type. Minimal Gloas uses upstream's
 `PTC_SIZE=16` directly.
@@ -227,8 +229,9 @@ python -m pip install build
 python -m build
 ```
 
-A source distribution includes vendored native source. Building it produces a
-platform wheel with the three shared libraries. To compile Zig directly:
+A source distribution includes the bindings, dependency pins, checksums, and
+third-party license notices. Building it fetches any uncached dependencies and
+produces a platform wheel with the three shared libraries. To compile Zig directly:
 
 ```sh
 python -m ziglang build -Doptimize=ReleaseSafe -Dcpu=baseline
@@ -237,6 +240,9 @@ python -m ziglang fmt --check build.zig native
 
 `-Dpreset=minimal` builds only that preset. `zig-out` is for direct Zig builds;
 Python packaging installs its own artifacts into `ssz_z/_native`.
+Direct Zig builds use `python3` to fetch sources; override with
+`-Dpython=/path/to/python` if needed. Schema regeneration uses the cached Lodestar
+source by default, or accepts `--lodestar-root /path/to/lodestar`.
 
 Python uses `ctypes` to call a small C ABI. SSZ encoding, validation, decoding,
 and Merkleization run in Lodestar-Z. The fast path retains validated SSZ bytes

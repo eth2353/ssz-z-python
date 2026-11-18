@@ -33,6 +33,7 @@ class BuildPy(build_py):
                 "-Doptimize=ReleaseSafe",
                 "-Dcpu=baseline",
                 "-j2",
+                f"-Dpython={sys.executable}",
                 "--prefix",
                 str(prefix),
             ],

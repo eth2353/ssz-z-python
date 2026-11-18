@@ -1,12 +1,9 @@
-include build.zig setup.py vendor/UPSTREAM.json vendor/PATCHES.md
+include build.zig setup.py UPSTREAM.json
 include VALIDATION.md performance/benchmark.py performance/report.md performance/pilot-summary.json
 include performance/baseline-profile.txt performance/optimized-profile.txt
 recursive-include native *.zig *.h
-recursive-include vendor *.zig *.zon *.c *.h *.S LICENSE* COPYING* UPSTREAM.json
+recursive-include licenses *.txt
 recursive-include tests *.py *.json *.yaml *.ssz_snappy LICENSE*
 recursive-include tools *.py
-prune vendor/lodestar-z/.git
-prune vendor/hashtree-z/.git
-prune vendor/hashtree/.git
 
 prune src/ssz_z/_native

@@ -1,0 +1,38 @@
+{
+  "hashtree-z": {
+    "repository": "https://github.com/ChainSafe/hashtree-z",
+    "commit": "9b0fdad8f5159b8d7ccc3b5d74f18f63a3881482",
+    "archive_url": "https://codeload.github.com/ChainSafe/hashtree-z/tar.gz/9b0fdad8f5159b8d7ccc3b5d74f18f63a3881482",
+    "archive_sha256": "295aeda3155fb37e9fbaa480872ff5be46625235cc9e22a388d2f8202de59b7d",
+    "license": "MIT"
+  },
+  "hashtree": {
+    "repository": "https://github.com/offchainlabs/hashtree",
+    "commit": "fba14494dada4420440d985c2c516341d9c24b9b",
+    "license": "MIT",
+    "archive_url": "https://codeload.github.com/offchainlabs/hashtree/tar.gz/fba14494dada4420440d985c2c516341d9c24b9b",
+    "archive_sha256": "6b3330f9af985345a48fee92134e7b69e36302cee16d8af914f7ae4e92331f61"
+  },
+  "consensus-specs": {
+    "repository": "https://github.com/ethereum/consensus-specs",
+    "tag": "v1.7.0-beta.4",
+    "commit": "aa16bb4c156184e9548a997d53efaf2a228a6304",
+    "purpose": "Schemas in native/consensus.zig and official SSZ static vectors"
+  },
+  "beacon-APIs": {
+    "repository": "https://github.com/ethereum/beacon-APIs",
+    "branch": "master",
+    "commit": "01e99a6530b22941f619bde525cbf8bb61991d42",
+    "purpose": "Electra/Fulu block contents and blinded block schemas in native/beacon_api.zig"
+  },
+  "lodestar": {
+    "repository": "https://github.com/ChainSafe/lodestar",
+    "branch": "unstable",
+    "commit": "0ac7778d7034693a0818296dbe717f2999576ab1",
+    "license": "Apache-2.0",
+    "purpose": "Native SSZ engine and preset constants",
+    "previous_repository": "https://github.com/ChainSafe/lodestar-z",
+    "archive_url": "https://codeload.github.com/ChainSafe/lodestar/tar.gz/0ac7778d7034693a0818296dbe717f2999576ab1",
+    "archive_sha256": "3409309143d168a9aeef83588dbd01103619819dc1adb87939bff55dce3609bb"
+  }
+}

@@ -9,7 +9,7 @@ description = "Native Python bindings to Lodestar-Z SSZ consensus types"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-license-files = ["LICENSE", "vendor/*/LICENSE*"]
+license-files = ["LICENSE", "licenses/*.txt"]
 authors = [{name = "ssz-z-python contributors"}]
 classifiers = [
     "Programming Language :: Python :: 3",

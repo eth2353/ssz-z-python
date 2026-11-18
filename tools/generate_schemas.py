@@ -6,6 +6,7 @@ python tools/generate_schemas.py /path/to/consensus-specs native/consensus.zig
 
 import argparse
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -21,24 +22,18 @@ GINDICES = {
 
 
 class Generator:
-    def __init__(self, definitions):
+    def __init__(self, definitions, lodestar_root):
         self.definitions = definitions
         self.output = {}
         self.fixed = {}
         self.preset_names = set(
-            re.findall(
-                r"pub const (\w+)", (ROOT / "vendor/lodestar-z/src/preset/preset.zig").read_text()
-            )
+            re.findall(r"pub const (\w+)", (lodestar_root / "src/preset/preset.zig").read_text())
         )
         self.constants = set(
-            re.findall(
-                r"pub const (\w+)", (ROOT / "vendor/lodestar-z/src/constants/root.zig").read_text()
-            )
+            re.findall(r"pub const (\w+)", (lodestar_root / "src/constants/root.zig").read_text())
         )
         self.preset_module_names = set(
-            re.findall(
-                r"pub const (\w+)", (ROOT / "vendor/lodestar-z/src/preset/root.zig").read_text()
-            )
+            re.findall(r"pub const (\w+)", (lodestar_root / "src/preset/root.zig").read_text())
         )
 
     def bound(self, node):
@@ -162,7 +157,10 @@ class Generator:
         return name
 
 
-def generate(spec_root, destination):
+def generate(spec_root, destination, lodestar_root=None):
+    if lodestar_root is None:
+        manifest = json.loads((ROOT / "UPSTREAM.json").read_text())
+        lodestar_root = ROOT / "build/deps/lodestar" / manifest["lodestar"]["commit"]
     definitions = {}
     sections = []
     for fork in FORKS:
@@ -181,7 +179,7 @@ def generate(spec_root, destination):
                             definitions[node.name] = node
         if fork not in {"electra", "fulu", "gloas"}:
             continue
-        generator = Generator(definitions)
+        generator = Generator(definitions, lodestar_root)
         # Every container is a public codec; collection/scalar aliases are emitted
         # whenever one of those containers depends on them.
         for name, cls in definitions.items():
@@ -219,5 +217,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("spec_root", type=Path)
     parser.add_argument("destination", type=Path)
+    parser.add_argument("--lodestar-root", type=Path, help="Override the cached Lodestar source")
     args = parser.parse_args()
-    generate(args.spec_root, args.destination)
+    generate(args.spec_root, args.destination, args.lodestar_root)
