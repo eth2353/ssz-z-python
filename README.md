@@ -301,7 +301,7 @@ round-trip through SSZ. `hash_tree_root_from_ssz` and block projections hash
 serialized bytes directly. Native calls release the GIL and use independent
 per-call arenas; dynamically returned buffers are copied into Python and freed
 before returning. The native writer transfers ownership of its output buffer
-to the caller. [native/bindings.h](native/bindings.h) documents ABI version 2.
+to the caller. [native/bindings.h](native/bindings.h) documents ABI version 1.
 Python and native libraries are built and installed together; the loader rejects
 a mismatched native ABI.
 

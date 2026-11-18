@@ -86,8 +86,8 @@ fields directly from validated bytes, and attaches signatures with one buffer
 allocation. It performs no BLS signing. Metadata resolution is cached separately.
 Values own immutable Python bytes and use ordinary garbage collection. Returned
 publication bytes remain valid independently of their source value. Python code
-and native libraries must be installed together; the loader checks that their
-ABI versions match. The current ABI is documented in
+and native libraries are installed together; the loader verifies ABI version 1,
+documented in
 [native/bindings.h](../native/bindings.h).
 
 ## Reproduction
