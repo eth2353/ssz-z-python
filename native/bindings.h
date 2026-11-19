@@ -12,7 +12,7 @@
  * ABI version is recorded in UPSTREAM.json. Calls synchronize hash initialization.
  * Status: 0 success, 1 invalid input (output is an error name), 2 allocation failure.
  * Free every non-NULL output with ssz_z_free, including error messages.
- * Inputs and serialized outputs are limited to 512 MiB. */
+ * Inputs and SSZ outputs are limited to 512 MiB; JSON output may be larger. */
 uint8_t ssz_z_call(const uint8_t *fork, size_t fork_len,
                    const uint8_t *name, size_t name_len, uint8_t operation,
                    const uint8_t *input, size_t input_len,
