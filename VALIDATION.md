@@ -1,108 +1,65 @@
-# Validation
+# Validation and schema maintenance
 
-Verified locally on macOS arm64 against these pinned sources:
+Use [UPSTREAM.json](UPSTREAM.json) for the authoritative engine, specification,
+Beacon API, and hashing dependency pins. `native/consensus.zig` is generated from
+the pinned specification using Python AST parsing; specification code is never
+executed. The native engine is not patched.
 
-- Lodestar `unstable`: `0ac7778d7034693a0818296dbe717f2999576ab1`.
-- Consensus specification: `v1.7.0-beta.4`, commit
-  `aa16bb4c156184e9548a997d53efaf2a228a6304`.
-- Zig 0.16.0, ReleaseSafe, baseline CPU.
+## Tests
 
-The November 18, 2026 refresh follows development from the archived Lodestar-Z
-repository into the active Lodestar monorepo. Native sources are fetched from
-commit-pinned archives, checked against SHA-256 hashes in `UPSTREAM.json`, and
-cached under `build/deps`. Downloaded sources were compared byte-for-byte with
-the previously validated snapshots before removing `vendor/`. Third-party
-license notices remain in `licenses/`. There are no local native patches.
-The bindings use upstream's progressive byte-list type, minimal
-`PTC_SIZE=16`, and Gloas sync-committee/finality generalized indices directly.
-The hashtree dependencies remain at the revisions pinned by upstream.
+```sh
+uv sync --locked
+uv run --locked pytest
+uv run --locked mypy
+uv run --locked python -m ziglang fmt --check build.zig native
+uv run --locked pre-commit run --all-files --show-diff-on-failure
+```
 
-## Official SSZ static vectors
+The normal suite includes bundled official SSZ vectors, default round trips for
+all exported codecs, scalar/collection boundaries, invalid SSZ and JSON,
+concurrent reads and cold-start hashes, block projections, proposal metadata,
+and signed publication wrappers. Official vectors compare independently
+published values, bytes, and roots. Gnosis has local preset-specific coverage;
+the Ethereum release does not publish gnosis vectors.
 
-All cases for Electra, Fulu, and Gloas were extracted from the official release
-archives and passed under both Python 3.12.16 and Python 3.15.2:
+For the full official static suites, download `mainnet.tar.gz` and
+`minimal.tar.gz` from the consensus-specs release identified by the manifest.
+Extract them with:
 
-| Preset | Distinct cases |
-| --- | ---: |
-| minimal | 23,124 |
-| mainnet | 940 |
-| Total | 24,064 |
+```sh
+python tools/extract_vectors.py /path/to/minimal.tar.gz fixtures
+python tools/extract_vectors.py /path/to/mainnet.tar.gz fixtures
+uv run --locked pytest -m spec
+```
 
-Each case verified decoding, byte-identical encoding, the published hash tree
-root, JSON input conversion, and JSON output round trips. The run also included
-75 bundled official smoke vectors, 148 binding/API tests, one schema-generator
-regression test, and three dependency-fetch tests: **24,291 passed**.
-Every external case also exercised the SSZ-backed value loaders for both JSON
-and SSZ, checking exact encoded bytes and roots.
+`--cases-per-suite 2` limits extraction to a sample. `SSZ_SPEC_TESTS=/path/to/tests`
+selects another extracted suite. Extraction records the archive digest; verify
+it against the release asset before relying on external vectors. The bundled
+vector manifest records the provenance of committed cases.
 
-Archive SHA-256 hashes:
+## Regenerate schemas
 
-- minimal.tar.gz: `26d09aea70c62ed235a120a95082d544ab1c2e6fe36bd35ea1bd5da62f3b7b68`
-- mainnet.tar.gz: `67762986572372a08d3b182535aa760433c86e174e14e0bbd756f350dd19398c`
+Check out the consensus-specs commit from `UPSTREAM.json`, with no edits or
+untracked files under `specs`. Populate the pinned engine sources, then run:
 
-## Binding checks
+```sh
+python tools/fetch_native.py
+python tools/generate_schemas.py /path/to/consensus-specs native/consensus.zig
+uv run --locked python -m ziglang fmt native/consensus.zig
+git diff -- native/consensus.zig
+```
 
-The suite without external vector files passed **227 tests**, including the
-75 bundled vectors and 152 local tests. It covers every exported codec's default
-round trip across all nine fork/preset combinations; integer boundaries,
-malformed JSON, offsets, lengths, bitfields, deterministic SSZ mutations,
-concurrent calls, preset-specific sizes, and Gloas progressive hashing. Beacon
-API coverage includes all five production/publishing codecs for Electra/Fulu
-in all presets, Fulu cell-proof bounds, independent contents roots and SSZ
-offsets, and matching full/blinded payload, body, block, and signed-block roots.
-
-The catalog rejects legacy type-name aliases and resolves fork types directly
-from the generated release schemas.
-
-The SSZ-backed API additionally covers arbitrary JSON field order and escapes,
-REST response envelopes, malformed/duplicate fields, immutable snapshots of
-mutable inputs, scalar/header projection, signed wrappers with blob/proof data,
-frozen values and independent output lifetimes, concurrent reads/signing, and
-native-call counts in the proposal flow. Progressive byte lists retain hex JSON
-while progressive participation lists retain arrays of decimal strings.
-
-Gnosis has no vectors in the official Ethereum release. Its codecs passed the
-local checks, using Lodestar-Z's gnosis constants and the same beta.4 schemas.
-Gnosis was already present in the previous upstream pin and remains available
-in the active source. Schema generation now rejects an incomplete specification
-checkout without overwriting the existing generated file.
-Dependency-fetch tests cover offline cache reuse, checksum rejection, and
-archive path traversal rejection.
+The generator verifies the specification revision and source cleanliness before
+writing output. It uses the cached Lodestar sources by default;
+`--lodestar-root /path/to/lodestar` overrides that location. Update upstream pins,
+regenerate, and run the matching official vectors together when upgrading.
 
 ## Packaging
 
-- Editable installation succeeded.
-- Built a source distribution and then built a wheel from that distribution.
-- Source distribution contains bindings, dependency pins/checksums, and license
-  notices, with no dependency source snapshots or prebuilt native binaries.
-- Building the source distribution fetches and verifies uncached sources.
-- Wheel contains all three preset libraries and has no runtime dependencies.
-- Clean Python 3.12.16 and Python 3.15.2 installations of the wheel passed SSZ
-  round-trip and root checks for all 1,374 canonical fork/preset codecs.
-- Wheel metadata requires Python 3.12 or newer.
-- Wheel tag: `py3-none-macosx_11_0_arm64`; native deployment target is macOS 11.0.
-- Schema regeneration reproduces the committed generated source exactly.
-- Ruff lint/format and Zig formatting checks passed.
-
-Native ABI version is 1; Python and the three native libraries are built and
-installed together. See [the sampled performance report](performance/report.md)
-for the separate, limited timing comparison. No full benchmark was run for this change.
-
-CI tests and builds on Linux with Python 3.12 and Python 3.15. These local checks
-ran on macOS arm64; the GitHub Actions workflow was not executed on this host.
-
-## Beacon API adapters
-
-Block projections and API envelope signing live in `ssz_z.beacon_api`, separate
-from generic `NativeValue`. Signed-container offsets are schema-derived; the
-Electra/Fulu proposal flow still uses one validation and one body projection,
-with no extra native calls for signing. The upstream blinded types matched all
-18 previous schemas, default encodings, and roots byte-for-byte, and the
-populated full/blinded root tests passed in all presets.
-
-Response tests cover metadata-based full/blinded/Gloas codec selection for JSON
-and SSZ, header conflicts, immutable metadata, duplicate/escaped keys, Unicode
-byte ranges, and avoiding Python materialization of blob data. Gloas tests
-cover bare signed-block publication, stateful and stateless payload revelation,
-preserved blobs/proofs, builder-bid rejection, and mismatched envelope roots,
-parent roots, builder indices, and slots.
+CI runs on Linux AMD64 and ARM64 using the Python versions in
+[the workflow](.github/workflows/test.yml). It tests an editable source build,
+builds an sdist and a local wheel, and tests the installed wheel. These are
+local build artifacts, not portable public wheels. Third-party notices ship
+with distributions; dependency sources and prebuilt binaries are excluded from
+the sdist. Record validation results from the current run rather than treating
+historical test counts as coverage guarantees.
