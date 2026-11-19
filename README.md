@@ -26,7 +26,7 @@ offline. Run `python tools/fetch_native.py` to populate the cache ahead of time.
 No system Zig installation, Node.js, or Rust is required. Linux x86 builds also need a
 system assembler (GNU binutils), as required by the upstream assembly backend.
 
-A built wheel requires `msgspec>=0.22` at runtime and requires no compiler.
+A built wheel has no runtime dependencies and requires no compiler.
 The wheel contains native code and is specific to its operating system and CPU
 architecture; its C ABI is independent of the CPython version.
 

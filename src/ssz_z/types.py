@@ -1,10 +1,10 @@
 """Consensus codecs loading wire documents into immutable SSZ-backed values."""
 
 import copy
+import json
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 
-from ._json import decoder as _JSON_DECODER
 from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, Operation, SSZError, call
 from .value import NativeValue, _Layout, input_bytes
 
@@ -87,7 +87,7 @@ def _check(fork: str, preset: str) -> None:
 def list_types(*, fork: str, preset: str) -> tuple[str, ...]:
     """List canonical SSZ type names for an explicitly selected fork."""
     _check(fork, preset)
-    return tuple(_JSON_DECODER.decode(call(preset, fork, "", Operation.LIST_TYPES)))
+    return tuple(json.loads(call(preset, fork, "", Operation.LIST_TYPES)))
 
 
 @lru_cache(maxsize=4096)
@@ -100,5 +100,5 @@ def get_type(name: str, *, fork: str, preset: str) -> SSZType:
             namespace = "primitive"
         else:
             raise ValueError(f"Unknown SSZ type {name!r} for {fork}/{preset}")
-    schema = _JSON_DECODER.decode(call(preset, namespace, name, Operation.TYPE_SCHEMA))
+    schema = json.loads(call(preset, namespace, name, Operation.TYPE_SCHEMA))
     return SSZType(name, namespace, preset, schema)

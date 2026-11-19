@@ -29,7 +29,6 @@ args = parser.parse_args()
 sys.path.append(str(args.spy_site_packages))
 
 
-import msgspec
 import spy_ssz
 from spy_ssz import Fork as SpyFork
 from spy_ssz import ObjectKind, get_ssz_type
@@ -139,12 +138,12 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
 
         def run(case, order):
             slot, json_input, ssz_input = case
-            signed_value = msgspec.json.decode(json_input)["data"]
+            signed_value = json.loads(json_input)["data"]
             value = signed_value["message"]
             if fork != "gloas":
                 value = {"block": value, "kzg_proofs": [], "blobs": []}
-            production_json = msgspec.json.encode({"data": value})
-            production_ssz = new_proposal.load_json(msgspec.json.encode(value)).to_ssz()
+            production_json = json.dumps({"data": value}, separators=(",", ":")).encode()
+            production_ssz = new_proposal.load_json(json.dumps(value, separators=(",", ":")).encode()).to_ssz()
             signature = signed_value["signature"]
             output = {}
             elapsed = {}
@@ -218,14 +217,14 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
                 assert json_flow[:2] == ssz_flow[:2]
                 output[lib] = (root, json_flow, ssz_flow, json_output)
             a, b = output["spy-ssz"], output["ssz-z-python"]
-            assert msgspec.json.decode(a[3]) == msgspec.json.decode(b[3]), (
+            assert json.loads(a[3]) == json.loads(b[3]), (
                 network,
                 slot,
                 "JSON encode mismatch",
             )
             assert a[0] == b[0], (network, slot, "signed root mismatch")
             assert a[1][:2] == b[1][:2], (network, slot, "header/block root mismatch")
-            assert msgspec.json.decode(a[1][2]) == msgspec.json.decode(b[1][2]), (
+            assert json.loads(a[1][2]) == json.loads(b[1][2]), (
                 network,
                 slot,
                 "signed JSON mismatch",

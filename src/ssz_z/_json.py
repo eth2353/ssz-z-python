@@ -2,12 +2,7 @@
 
 import json
 
-from msgspec.json import Decoder
-
 from ._native import SSZError
-
-decoder = Decoder()
-
 
 def _unique_object(pairs):
     result = {}

@@ -94,8 +94,7 @@ documented in
 
 [benchmark.py](benchmark.py) accepts the saved corpus and an isolated installation
 of the exact old spy-ssz pin. It never imports Vero or changes either checkout.
-The bindings install `msgspec`; point `--spy-site-packages` at the
-preserved old build. For a similarly limited pilot:
+Point `--spy-site-packages` at the preserved old build. For a similarly limited pilot:
 
 ```sh
 PYTHONPATH=src /path/to/python performance/benchmark.py \
