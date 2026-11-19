@@ -315,3 +315,21 @@ def test_progressive_bytes_and_uint8_lists_have_distinct_json(name, value, expec
     wrong_shape = ["1", "255"] if isinstance(expected_json, str) else "0x01ff"
     with pytest.raises(SSZError):
         codec.load_json(json_document(wrong_shape))
+
+
+def test_default_uses_one_native_ssz_operation(monkeypatch):
+    from ssz_z import types as implementation
+    from ssz_z._native import Operation
+
+    codec = get_type("BeaconState", fork="gloas", preset="minimal")
+    original = implementation.call
+    calls = []
+
+    def counted(preset, fork, name, operation, data=b""):
+        calls.append(operation)
+        return original(preset, fork, name, operation, data)
+
+    monkeypatch.setattr(implementation, "call", counted)
+    value = codec.default()
+    assert calls == [Operation.DEFAULT_SSZ]
+    assert codec.load_json(value.to_json()) == value

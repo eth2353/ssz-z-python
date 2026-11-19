@@ -24,7 +24,7 @@ const Operation = enum(u8) {
     json_to_ssz = 0,
     ssz_to_json = 1,
     hash_tree_root = 2,
-    default_json = 3,
+    default_ssz = 3,
     type_schema = 4,
     list_types = 5,
     validate_ssz = 6,
@@ -74,7 +74,7 @@ export fn ssz_z_free(ptr: [*]u8, len: usize) void {
 }
 
 export fn ssz_z_abi_version() u32 {
-    return 1;
+    return 2;
 }
 
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
@@ -133,22 +133,24 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation,
             }
             return writer.writer.writeAll(&root);
         },
-        .json_to_ssz, .ssz_to_json, .default_json, .rest_json_to_ssz => {},
+        .json_to_ssz, .ssz_to_json, .default_ssz, .rest_json_to_ssz => {},
         else => return error.UnknownOperation,
     }
     // BeaconState contains multi-megabyte fixed vectors; allocate it on the heap
     // so calls from Python worker threads do not exhaust their stacks.
     const value = try allocator.create(T.Type);
     value.* = T.default_value;
-    if (operation == .json_to_ssz or operation == .rest_json_to_ssz) {
-        var scanner = std.json.Scanner.initCompleteInput(allocator, input);
-        defer scanner.deinit();
-        if (operation == .rest_json_to_ssz) {
-            try json_codec.readRest(T, allocator, &scanner, value);
-        } else {
-            try json_codec.read(T, allocator, &scanner, value);
+    if (operation == .json_to_ssz or operation == .rest_json_to_ssz or operation == .default_ssz) {
+        if (operation != .default_ssz) {
+            var scanner = std.json.Scanner.initCompleteInput(allocator, input);
+            defer scanner.deinit();
+            if (operation == .rest_json_to_ssz) {
+                try json_codec.readRest(T, allocator, &scanner, value);
+            } else {
+                try json_codec.read(T, allocator, &scanner, value);
+            }
+            if (try scanner.next() != .end_of_document) return error.TrailingJson;
         }
-        if (try scanner.next() != .end_of_document) return error.TrailingJson;
         const size = if (comptime ssz.isFixedType(T)) T.fixed_size else T.serializedSize(value);
         if (size > max_input_size) return error.InputTooLarge;
         try writer.ensureUnusedCapacity(size);

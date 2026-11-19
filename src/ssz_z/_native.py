@@ -19,7 +19,7 @@ class Operation(IntEnum):
     JSON_TO_SSZ = 0
     SSZ_TO_JSON = 1
     HASH_TREE_ROOT = 2
-    DEFAULT_JSON = 3
+    DEFAULT_SSZ = 3
     TYPE_SCHEMA = 4
     LIST_TYPES = 5
     VALIDATE_SSZ = 6
@@ -49,7 +49,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 1:
+    if library.ssz_z_abi_version() != 2:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,

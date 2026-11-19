@@ -28,7 +28,7 @@ class SSZType:
 
     def default(self) -> NativeValue:
         """Return the canonical default value as immutable SSZ bytes."""
-        return self.load_json(self._call(Operation.DEFAULT_JSON))
+        return NativeValue._from_validated(self, self._call(Operation.DEFAULT_SSZ))
 
     @cached_property
     def _layout(self):
