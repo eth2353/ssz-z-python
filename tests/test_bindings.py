@@ -277,3 +277,34 @@ def test_preset_must_be_explicit(name):
         get_type(name, fork="gloas")
     with pytest.raises(TypeError, match="preset"):
         list_types(fork="gloas")
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_concurrent_first_hash_in_fresh_process(preset):
+    # Loading schemas/defaults does not hash. Every worker reaches its first
+    # native hash together.
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [sys.executable, "-c", """
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from ssz_z import get_type
+import sys
+
+preset = sys.argv[1]
+codec = get_type("Checkpoint", fork="gloas", preset=preset)
+value = codec.default()
+barrier = Barrier(16)
+expected = hashlib.sha256(bytes(64)).digest()
+def hash_once(_):
+    barrier.wait()
+    return codec.hash_tree_root_from_ssz(value.to_ssz())
+with ThreadPoolExecutor(max_workers=16) as pool:
+    assert all(root == expected for root in pool.map(hash_once, range(16)))
+""", preset],
+        check=True,
+        timeout=30,
+    )

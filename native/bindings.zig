@@ -2,6 +2,21 @@ const std = @import("std");
 const ssz = @import("ssz");
 const consensus = @import("consensus.zig");
 const json_codec = @import("json.zig");
+// hashtree lazily writes a non-atomic backend pointer on its first hash.
+// Publish a completed warm-up before allowing concurrent native hashes.
+var hash_initialization: std.atomic.Value(u8) = .init(0);
+
+fn ensureHashInitialized() void {
+    if (hash_initialization.load(.acquire) == 2) return;
+    if (hash_initialization.cmpxchgStrong(0, 1, .acq_rel, .acquire) == null) {
+        var root: [32]u8 = undefined;
+        ssz.ByteVectorType(64).serialized.hashTreeRoot(&([_]u8{0} ** 64), &root) catch unreachable;
+        hash_initialization.store(2, .release);
+    } else {
+        while (hash_initialization.load(.acquire) != 2) std.atomic.spinLoopHint();
+    }
+}
+
 const max_input_size = 512 * 1024 * 1024;
 
 // ABI values, mirrored by Python's _native.Operation and bindings.h.
@@ -103,10 +118,12 @@ fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation,
         },
         .validate_ssz => return T.serialized.validate(input),
         .block_projection => {
+            ensureHashInitialized();
             try T.serialized.validate(input);
             return @import("block_projection.zig").header(T, allocator, input, writer);
         },
         .hash_tree_root => {
+            ensureHashInitialized();
             try T.serialized.validate(input);
             var root: [32]u8 = undefined;
             if (comptime ssz.isFixedType(T)) {
