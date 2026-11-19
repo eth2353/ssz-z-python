@@ -6,11 +6,9 @@ from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 
-PRESETS = ("mainnet", "minimal", "gnosis")
-FORKS = ("electra", "fulu", "gloas")
+from ._metadata import ABI_VERSION, PRESETS
+
 MAX_INPUT_SIZE = 512 * 1024 * 1024
-UPSTREAM_COMMIT = "0ac7778d7034693a0818296dbe717f2999576ab1"
-SPEC_VERSION = "v1.7.0-beta.4"
 
 
 class Operation(IntEnum):
@@ -32,7 +30,7 @@ class SSZError(ValueError):
     """Invalid SSZ, JSON, or a value outside its consensus type's bounds."""
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=len(PRESETS))
 def _library(preset: str):
     if preset not in PRESETS:
         raise ValueError(f"Unknown preset {preset!r}; choose from {PRESETS}")
@@ -49,7 +47,7 @@ def _library(preset: str):
         )
     library = ctypes.CDLL(str(path))
     library.ssz_z_abi_version.restype = ctypes.c_uint32
-    if library.ssz_z_abi_version() != 2:
+    if library.ssz_z_abi_version() != ABI_VERSION:
         raise ImportError("Incompatible ssz-z native ABI")
     library.ssz_z_call.argtypes = [
         ctypes.c_char_p,

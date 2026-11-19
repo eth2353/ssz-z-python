@@ -9,7 +9,7 @@
  * 7 REST {data:...}->SSZ,
  * 8 block header SSZ (112 bytes) followed by unsigned block root (32 bytes),
  * 9 REST metadata JSON plus data_start/data_end byte offsets into the input.
- * ABI version 2. Calls share no mutable binding state.
+ * ABI version is recorded in UPSTREAM.json. Calls synchronize hash initialization.
  * Status: 0 success, 1 invalid input (output is an error name), 2 allocation failure.
  * Free every non-NULL output with ssz_z_free, including error messages.
  * Inputs and serialized outputs are limited to 512 MiB. */

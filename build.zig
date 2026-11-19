@@ -46,11 +46,15 @@ pub fn build(b: *std.Build) void {
     hashtree.addIncludePath(hashtree_c.path(b, "src"));
     hashtree.linkLibrary(hash);
 
-    for ([_][]const u8{ "mainnet", "minimal", "gnosis" }) |preset_name| {
+    var matched = false;
+    for (sources.value.object.get("bindings").?.object.get("presets").?.array.items) |preset_entry| {
+        const preset_name = preset_entry.string;
         if (selected) |name| {
             if (!std.mem.eql(u8, name, preset_name)) continue;
         }
+        matched = true;
         const options = b.addOptions();
+        options.addOption(u32, "abi_version", @intCast(sources.value.object.get("bindings").?.object.get("abi_version").?.integer));
         options.addOption([]const u8, "preset", preset_name);
         options.addOption(?u8, "zero_hash_max_depth", null);
         options.addOption(?bool, "expensive_safety_checks", null);
@@ -83,6 +87,7 @@ pub fn build(b: *std.Build) void {
         upstream.addImport("constants", constants);
         upstream.addImport("build_options", build_options);
         const root = b.createModule(.{ .root_source_file = b.path("native/bindings.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        root.addImport("build_options", build_options);
         root.addImport("ssz", ssz);
         root.addImport("preset", preset);
         root.addImport("constants", constants);
@@ -91,9 +96,7 @@ pub fn build(b: *std.Build) void {
         lib.step.dependOn(&fetch.step);
         b.installArtifact(lib);
     }
-    if (selected) |name| {
-        if (!std.mem.eql(u8, name, "mainnet") and !std.mem.eql(u8, name, "minimal") and !std.mem.eql(u8, name, "gnosis")) @panic("unknown preset");
-    }
+    if (selected != null and !matched) @panic("unknown preset");
 }
 
 fn module(b: *std.Build, source: std.Build.LazyPath, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, path: []const u8) *std.Build.Module {

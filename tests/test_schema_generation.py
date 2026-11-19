@@ -25,7 +25,17 @@ def test_specification_provenance(tmp_path):
     source = specs / "example.md"
     source.write_text("original spec")
     git("add", "specs")
-    git("-c", "commit.gpgsign=false", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "spec")
+    git(
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "spec",
+    )
     commit = git("rev-parse", "HEAD")
     verify_spec_revision(tmp_path, commit)
     with pytest.raises(ValueError, match="Expected clean"):

@@ -17,3 +17,5 @@ fixtures/
 performance/pilot/
 performance/bulk-pilot/
 performance/results/
+src/ssz_z/_upstream.json
+.mypy_cache/

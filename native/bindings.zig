@@ -74,7 +74,7 @@ export fn ssz_z_free(ptr: [*]u8, len: usize) void {
 }
 
 export fn ssz_z_abi_version() u32 {
-    return 2;
+    return @import("build_options").abi_version;
 }
 
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {

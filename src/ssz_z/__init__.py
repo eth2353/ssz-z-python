@@ -1,6 +1,9 @@
 """Native Lodestar-Z SSZ bindings for Electra, Fulu, and Gloas."""
 
-from ._native import FORKS, PRESETS, SPEC_VERSION, UPSTREAM_COMMIT, SSZError
+from importlib.metadata import version
+
+from ._metadata import FORKS, PRESETS, SPEC_VERSION, UPSTREAM_COMMIT
+from ._native import SSZError
 from ._schema import Schema
 from .types import SSZType, get_type, list_types
 from .value import NativeValue
@@ -17,4 +20,4 @@ __all__ = [
     "get_type",
     "list_types",
 ]
-__version__ = "0.2.0"
+__version__ = version("ssz-z-python")

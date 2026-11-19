@@ -163,13 +163,24 @@ def verify_spec_revision(spec_root, expected_commit):
             ["git", "-C", str(spec_root), "rev-parse", "HEAD"], text=True
         ).strip()
         changes = subprocess.check_output(
-            ["git", "-C", str(spec_root), "status", "--porcelain", "--untracked-files=all", "--", "specs"],
+            [
+                "git",
+                "-C",
+                str(spec_root),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                "specs",
+            ],
             text=True,
         ).strip()
     except subprocess.CalledProcessError as error:
         raise ValueError("Schema generation requires a Git specification checkout") from error
     if actual != expected_commit or changes:
-        raise ValueError(f"Expected clean consensus-specs checkout at {expected_commit}; got {actual}")
+        raise ValueError(
+            f"Expected clean consensus-specs checkout at {expected_commit}; got {actual}"
+        )
 
 
 def generate(spec_root, destination, lodestar_root=None):
@@ -225,7 +236,8 @@ def generate(spec_root, destination, lodestar_root=None):
             for name in ("BeaconBlockContents", "SignedExecutionPayloadEnvelopeContents"):
                 body += f"\npub const {name} = api.{name};"
         sections.append(f"pub const {fork} = struct {{\n{body}\n}};")
-    header = f"""//! Generated from ethereum/consensus-specs {manifest["consensus-specs"]["tag"]} ({manifest["consensus-specs"]["commit"]}).
+    spec = manifest["consensus-specs"]
+    header = f"""//! Generated from ethereum/consensus-specs {spec["tag"]} ({spec["commit"]}).
 //! Regenerate with tools/generate_schemas.py. The engine is Lodestar-Z SSZ.
 const std = @import("std");
 const ssz = @import("ssz");

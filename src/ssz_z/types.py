@@ -5,7 +5,8 @@ import json
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 
-from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, Operation, SSZError, call
+from ._metadata import FORKS, PRESETS
+from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
 from ._schema import Schema
 from .value import NativeValue, _Layout, input_bytes
 
@@ -84,7 +85,7 @@ def _check(fork: str, preset: str) -> None:
         raise ValueError(f"Unknown preset {preset!r}; choose from {PRESETS}")
 
 
-@lru_cache(maxsize=12)
+@lru_cache(maxsize=(len(FORKS) + 1) * len(PRESETS))
 def list_types(*, fork: str, preset: str) -> tuple[str, ...]:
     """List canonical SSZ type names for an explicitly selected fork."""
     _check(fork, preset)

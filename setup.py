@@ -1,5 +1,6 @@
 """Build three preset libraries and bundle them into a Python-ABI-independent wheel."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).parent.resolve()
+UPSTREAM = json.loads((ROOT / "UPSTREAM.json").read_text())
 
 
 class NativeDistribution(Distribution):
@@ -26,11 +28,10 @@ class BuildPy(build_py):
         build_root.mkdir(exist_ok=True)
         env = os.environ.copy()
         env.setdefault("ZIG_GLOBAL_CACHE_DIR", str(ROOT / ".zig-global-cache"))
-        destination = (
-            ROOT / "src" / "ssz_z" / "_native"
-            if self.editable_mode
-            else Path(self.build_lib) / "ssz_z" / "_native"
+        package_root = (
+            ROOT / "src" / "ssz_z" if self.editable_mode else Path(self.build_lib) / "ssz_z"
         )
+        destination = package_root / "_native"
         with TemporaryDirectory(prefix="native-", dir=build_root) as temporary:
             prefix = Path(temporary)
             subprocess.run(
@@ -51,7 +52,7 @@ class BuildPy(build_py):
                 check=True,
             )
             libraries = []
-            for preset in ("mainnet", "minimal", "gnosis"):
+            for preset in UPSTREAM["bindings"]["presets"]:
                 filename = (
                     f"ssz_z_{preset}.dll"
                     if sys.platform == "win32"
@@ -68,6 +69,7 @@ class BuildPy(build_py):
             destination.mkdir(parents=True)
             for library in libraries:
                 shutil.copy2(library, destination / library.name)
+        shutil.copy2(ROOT / "UPSTREAM.json", package_root / "_upstream.json")
 
 
 class NativeWheel(bdist_wheel):
