@@ -45,19 +45,21 @@ def proposal_values(preset, included, *, self_build=True):
 def test_gloas_block_and_payload_publications_are_separate(preset, included):
     (codec, block, envelope, contents, value) = proposal_values(preset, included)
     metadata = {"version": "gloas", "execution_payload_included": included}
+    headers = {
+        "Eth-Consensus-Version": "gloas",
+        "Eth-Execution-Payload-Included": str(included).lower(),
+        "Eth-Builder-Url": "https://builder.example",
+    }
     response = load_proposal_json(
-        json_document({"data": json.loads(value.to_json()), **metadata}), preset=preset
+        json_document({"data": json.loads(value.to_json()), **metadata}),
+        preset=preset,
+        headers=headers,
     )
     proposal = response.proposal
     assert isinstance(proposal, GloasProposal)
     assert proposal.block.slot == 42
     assert proposal.is_self_build
     assert proposal.payload_included == included
-    headers = {
-        "Eth-Consensus-Version": "gloas",
-        "Eth-Execution-Payload-Included": str(included).lower(),
-        "Eth-Builder-Url": "https://builder.example",
-    }
     binary = load_proposal_ssz(value.to_ssz(), headers=headers, preset=preset)
     assert binary.value.to_ssz() == response.value.to_ssz()
     assert binary.metadata["builder_url"] == "https://builder.example"
@@ -140,7 +142,6 @@ def test_payload_must_belong_to_its_proposal(field, included):
 @pytest.mark.parametrize(
     "metadata",
     [
-        {"version": "gloas"},
         {"version": "gloas", "execution_payload_included": "true"},
         {
             "version": "gloas",
@@ -151,4 +152,12 @@ def test_payload_must_belong_to_its_proposal(field, included):
 )
 def test_gloas_requires_its_own_response_metadata(metadata):
     with pytest.raises(SSZError):
-        load_proposal_json(json_document({"data": {}, **metadata}), preset="minimal")
+        load_proposal_json(
+            json_document({"data": {}, **metadata}),
+            preset="minimal",
+            headers={
+                "eth-consensus-version": "gloas",
+                "eth-execution-payload-included": "false",
+                "eth-execution-payload-blinded": "false",
+            },
+        )

@@ -6,6 +6,8 @@ from ssz_z import PRESETS, SSZError, get_type
 from ssz_z.beacon_api import load_proposal_json, load_proposal_ssz
 from tests.json_helpers import json_document, json_value
 
+FULU_HEADERS = {"eth-consensus-version": "fulu", "eth-execution-payload-blinded": "false"}
+
 
 @pytest.mark.parametrize("preset", PRESETS)
 @pytest.mark.parametrize("fork", ["electra", "fulu"])
@@ -22,7 +24,13 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
         "extra": {"nested": ["é"]},
     }
     text = json_document({"extra": metadata["extra"], "data": json_value(value), **metadata})
-    response = load_proposal_json(text, preset=preset)
+    headers = {
+        "Eth-Consensus-Version": fork,
+        "ETH-Execution-Payload-Blinded": str(blinded).lower(),
+        "Eth-Execution-Payload-Value": "12",
+        "Eth-Consensus-Block-Value": "34",
+    }
+    response = load_proposal_json(text, preset=preset, headers=headers)
     assert response.value.codec == codec
     assert response.value.to_ssz() == codec.load_json(json_document(value)).to_ssz()
     assert response.proposal.slot == 0
@@ -32,12 +40,6 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
         response.metadata["version"] = "gloas"
     with pytest.raises(TypeError):
         response.metadata["extra"]["nested"] = []
-    headers = {
-        "Eth-Consensus-Version": fork,
-        "ETH-Execution-Payload-Blinded": str(blinded).lower(),
-        "Eth-Execution-Payload-Value": "12",
-        "Eth-Consensus-Block-Value": "34",
-    }
     binary = load_proposal_ssz(
         codec.load_json(json_document(value)).to_ssz(), headers=headers, preset=preset
     )
@@ -49,9 +51,7 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
 @pytest.mark.parametrize(
     "metadata",
     [
-        {},
         {"version": "unknown", "execution_payload_blinded": False},
-        {"version": "fulu"},
         {"version": "fulu", "execution_payload_blinded": "false"},
         {"version": "fulu", "execution_payload_blinded": False, "execution_payload_value": "-1"},
         {"version": "fulu", "execution_payload_blinded": False, "consensus_block_value": True},
@@ -59,7 +59,9 @@ def test_metadata_selects_proposal_codec(fork, preset, blinded):
 )
 def test_invalid_proposal_metadata(metadata):
     with pytest.raises(SSZError):
-        load_proposal_json(json_document({"data": {}, **metadata}), preset="minimal")
+        load_proposal_json(
+            json_document({"data": {}, **metadata}), preset="minimal", headers=FULU_HEADERS
+        )
 
 
 @pytest.mark.parametrize(
@@ -73,7 +75,9 @@ def test_headers_cannot_repair_invalid_json_booleans(fork, flag, token, header):
     text = f'{{"version":"{fork}","{flag}":{token},"data":{{}}}}'
     with pytest.raises(SSZError):
         load_proposal_json(
-            text, preset="minimal", headers={"eth-" + flag.replace("_", "-"): header}
+            text,
+            preset="minimal",
+            headers={"eth-consensus-version": fork, "eth-" + flag.replace("_", "-"): header},
         )
 
 
@@ -98,9 +102,11 @@ def test_response_rejects_duplicate_missing_and_conflicting_metadata():
         '{"version":"fulu","execution_payload_blinded":false}',
     ):
         with pytest.raises(SSZError):
-            load_proposal_json(text, preset="minimal")
+            load_proposal_json(text, preset="minimal", headers=FULU_HEADERS)
     with pytest.raises(SSZError, match="Conflicting"):
-        load_proposal_json(good, preset="minimal", headers={"eth-consensus-version": "electra"})
+        load_proposal_json(
+            good, preset="minimal", headers={**FULU_HEADERS, "eth-consensus-version": "electra"}
+        )
     with pytest.raises(SSZError):
         load_proposal_ssz(b"", headers={"eth-consensus-version": "fulu"}, preset="minimal")
 
@@ -122,13 +128,63 @@ def test_blob_data_is_not_materialized_by_python_metadata_parser(monkeypatch):
 
     monkeypatch.setattr(beacon_api, "decode_metadata", metadata_only)
     assert (
-        load_proposal_json(text, preset="minimal").value.to_ssz()
+        load_proposal_json(text, preset="minimal", headers=FULU_HEADERS).value.to_ssz()
         == codec.load_json(json_document(value)).to_ssz()
     )
 
 
 def test_proposal_loaders_require_explicit_preset():
     with pytest.raises(TypeError, match="preset"):
-        load_proposal_json(b"{}")
+        load_proposal_json(b"{}", headers={})
     with pytest.raises(TypeError, match="preset"):
         load_proposal_ssz(b"", headers={})
+
+
+def test_json_proposals_require_headers_argument():
+    with pytest.raises(TypeError, match="headers"):
+        load_proposal_json(b"{}", preset="minimal")
+
+
+@pytest.mark.parametrize("fork", ["electra", "fulu", "gloas"])
+@pytest.mark.parametrize("missing", ["all", "version", "flag", "none"])
+def test_json_metadata_cannot_replace_missing_headers(fork, missing):
+    flag = "execution_payload_included" if fork == "gloas" else "execution_payload_blinded"
+    name = "BeaconBlock" if fork == "gloas" else "BeaconBlockContents"
+    value = get_type(name, fork=fork, preset="minimal").default()
+    text = json.dumps({"version": fork, flag: False, "data": json.loads(value.to_json())})
+    headers = {"eth-consensus-version": fork, "eth-" + flag.replace("_", "-"): "false"}
+    if missing == "all":
+        headers = {}
+    elif missing == "version":
+        del headers["eth-consensus-version"]
+    elif missing == "flag":
+        del headers["eth-" + flag.replace("_", "-")]
+    else:
+        headers = None
+    with pytest.raises(SSZError):
+        load_proposal_json(text, preset="minimal", headers=headers)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["execution_payload_value", "consensus_block_value", "execution_payload_source", "builder_url"],
+)
+def test_known_body_metadata_requires_corresponding_header(field):
+    codec = get_type("BeaconBlockContents", fork="fulu", preset="minimal")
+    metadata_value = "12" if field.endswith("value") else "example"
+    text = json.dumps({field: metadata_value, "data": json.loads(codec.default().to_json())})
+    with pytest.raises(SSZError, match=f"Missing response header for {field}"):
+        load_proposal_json(text, preset="minimal", headers=FULU_HEADERS)
+    headers = {**FULU_HEADERS, "eth-" + field.replace("_", "-"): metadata_value}
+    response = load_proposal_json(text, preset="minimal", headers=headers)
+    assert response.value.codec == codec
+
+
+@pytest.mark.parametrize("fork", ["electra", "fulu", "gloas"])
+def test_headers_select_codec_without_json_metadata(fork):
+    flag = "execution_payload_included" if fork == "gloas" else "execution_payload_blinded"
+    name = "BeaconBlock" if fork == "gloas" else "BeaconBlockContents"
+    value = get_type(name, fork=fork, preset="minimal").default()
+    headers = {"eth-consensus-version": fork, "eth-" + flag.replace("_", "-"): "false"}
+    text = json.dumps({"data": json.loads(value.to_json())})
+    assert load_proposal_json(text, preset="minimal", headers=headers).value == value

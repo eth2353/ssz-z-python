@@ -256,8 +256,8 @@ def _metadata_value(key, value):
     return value
 
 
-def _response_metadata(metadata, headers):
-    metadata = {key: _metadata_value(key, value) for key, value in metadata.items()}
+def _header_metadata(headers):
+    metadata = {}
     for header, value in (headers or {}).items():
         key = _HEADER_FIELDS.get(header.lower())
         if key is None:
@@ -292,15 +292,24 @@ def _proposal_codec(metadata, preset):
     return get_type(name, fork=metadata["version"], preset=preset)
 
 
-def load_proposal_json(text, *, preset, headers=None) -> BlockResponse:
-    """Select a proposal codec from JSON metadata without decoding its data in Python."""
+def load_proposal_json(text, *, preset, headers) -> BlockResponse:
+    """Select a proposal codec from required headers, checking JSON metadata against them."""
+    metadata = _header_metadata(headers)
     if isinstance(text, str):
         if len(text) > MAX_INPUT_SIZE:
             raise SSZError("JSON input too large")
         text = text.encode("utf-8")
     text = input_bytes(text)
     envelope = decode_metadata(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
-    metadata = _response_metadata(envelope["metadata"], headers)
+    for key, value in envelope["metadata"].items():
+        value = _metadata_value(key, value)
+        if key in _HEADER_FIELDS.values():
+            if key not in metadata:
+                raise SSZError(f"Missing response header for {key}")
+            if metadata[key] != value:
+                raise SSZError(f"Conflicting response metadata for {key}")
+        else:
+            metadata[key] = value
     codec = _proposal_codec(metadata, preset)
     value = codec.load_json(text[envelope["data_start"] : envelope["data_end"]])
     return BlockResponse(value, metadata)
@@ -308,5 +317,5 @@ def load_proposal_json(text, *, preset, headers=None) -> BlockResponse:
 
 def load_proposal_ssz(data, *, headers, preset) -> BlockResponse:
     """Select the SSZ proposal codec using Beacon API HTTP response headers."""
-    metadata = _response_metadata({}, headers)
+    metadata = _header_metadata(headers)
     return BlockResponse(_proposal_codec(metadata, preset).load_ssz(data), metadata)

@@ -136,12 +136,18 @@ For Beacon API production responses, select the codec from the response metadata
 ```python
 from ssz_z.beacon_api import load_proposal_json, load_proposal_ssz
 
-response = load_proposal_json(response_bytes, preset="mainnet")
+response = load_proposal_json(response_bytes, headers=response_headers, preset="mainnet")
 proposal = response.proposal
 payload_value = response.metadata["execution_payload_value"]
 # For application/octet-stream responses:
 response = load_proposal_ssz(ssz_bytes, headers=response_headers, preset="mainnet")
 ```
+
+Both proposal loaders require `Eth-Consensus-Version`, plus
+`Eth-Execution-Payload-Blinded` for Electra/Fulu or
+`Eth-Execution-Payload-Included` for Gloas. JSON body metadata cannot replace missing
+headers. Every recognized metadata field present in the body must have a matching
+header; additional JSON metadata is preserved.
 
 The adapter preserves metadata as an immutable mapping, normalizes block values
 into integers, and rejects conflicting JSON/header metadata. JSON metadata is
@@ -215,7 +221,7 @@ payload envelope, proofs, and blobs. Block publication always uses the bare
 `SignedBeaconBlock`; there is no Gloas `SignedBeaconBlockContents` codec.
 
 ```python
-response = load_proposal_json(response_bytes, preset="mainnet")
+response = load_proposal_json(response_bytes, headers=response_headers, preset="mainnet")
 proposal = response.proposal  # GloasProposal for version="gloas"
 block_root = proposal.block.block_hash_tree_root()
 signed_block = proposal.sign_block(block_signature)
