@@ -48,8 +48,6 @@ cache-keys = [
     { file = "native/*.h" },
     { file = "UPSTREAM.json" },
     { file = "tools/fetch_native.py" },
-    { file = "src/ssz_z/*.py" },
-    { file = "src/ssz_z/py.typed" },
 ]
 
 [tool.pytest.ini_options]
