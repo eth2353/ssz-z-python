@@ -1,4 +1,4 @@
-"""Generate Lodestar-Z types from the v1.7.0-beta.4 specification's class declarations.
+"""Generate Lodestar-Z types from the specification pinned in UPSTREAM.json.
 
 Only Python syntax is parsed; no specification code is executed. Regenerate with:
 python tools/generate_schemas.py /path/to/consensus-specs native/consensus.zig
@@ -8,11 +8,10 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 from pathlib import Path
 
 FORKS = ("phase0", "altair", "bellatrix", "capella", "deneb", "electra", "fulu", "gloas")
-VERSION = "v1.7.0-beta.4"
-COMMIT = "aa16bb4c156184e9548a997d53efaf2a228a6304"
 ROOT = Path(__file__).resolve().parents[1]
 
 # Spec-defined generalized index, which upstream does not yet expose.
@@ -157,10 +156,31 @@ class Generator:
         return name
 
 
+def verify_spec_revision(spec_root, expected_commit):
+    """Refuse to label unrelated or edited specification sources as the pin."""
+    try:
+        actual = subprocess.check_output(
+            ["git", "-C", str(spec_root), "rev-parse", "HEAD"], text=True
+        ).strip()
+        changes = subprocess.check_output(
+            ["git", "-C", str(spec_root), "status", "--porcelain", "--untracked-files=all", "--", "specs"],
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        raise ValueError("Schema generation requires a Git specification checkout") from error
+    if actual != expected_commit or changes:
+        raise ValueError(f"Expected clean consensus-specs checkout at {expected_commit}; got {actual}")
+
+
 def generate(spec_root, destination, lodestar_root=None):
+    manifest = json.loads((ROOT / "UPSTREAM.json").read_text())
     if lodestar_root is None:
-        manifest = json.loads((ROOT / "UPSTREAM.json").read_text())
         lodestar_root = ROOT / "build/deps/lodestar" / manifest["lodestar"]["commit"]
+    # Check completeness before provenance, preserving existing output on errors.
+    for fork in FORKS:
+        if not (spec_root / "specs" / fork / "beacon-chain.md").is_file():
+            raise ValueError(f"No specification Markdown found for {fork}: {spec_root}")
+    verify_spec_revision(spec_root, manifest["consensus-specs"]["commit"])
     definitions = {}
     sections = []
     for fork in FORKS:
@@ -205,7 +225,7 @@ def generate(spec_root, destination, lodestar_root=None):
             for name in ("BeaconBlockContents", "SignedExecutionPayloadEnvelopeContents"):
                 body += f"\npub const {name} = api.{name};"
         sections.append(f"pub const {fork} = struct {{\n{body}\n}};")
-    header = f"""//! Generated from ethereum/consensus-specs {VERSION} ({COMMIT}).
+    header = f"""//! Generated from ethereum/consensus-specs {manifest["consensus-specs"]["tag"]} ({manifest["consensus-specs"]["commit"]}).
 //! Regenerate with tools/generate_schemas.py. The engine is Lodestar-Z SSZ.
 const std = @import("std");
 const ssz = @import("ssz");
