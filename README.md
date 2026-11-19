@@ -89,12 +89,13 @@ names = list_types(fork="fulu", preset="gnosis")
 state = get_type("BeaconState", fork="fulu", preset="gnosis")
 attestation = get_type("Attestation", fork="electra", preset="minimal")
 bid = get_type("ExecutionPayloadBid", fork="gloas", preset="mainnet")
-uint256 = get_type("Uint256", fork="primitive")
+uint256 = get_type("Uint256", fork="primitive", preset="mainnet")
 print(attestation.schema)      # metadata reflected from the actual Zig type
 ```
 
-`fork` is required for both `get_type` and `list_types`; `preset` defaults to
-`"mainnet"`. `list_types` includes inherited
+Both `fork` and `preset` are required for `get_type` and `list_types`.
+The proposal loaders also require `preset`; their fork comes from response metadata.
+`list_types` includes inherited
 consensus types; primitive types have their own `fork="primitive"` namespace and
 are also resolved by `get_type` from every fork.
 

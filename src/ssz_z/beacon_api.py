@@ -292,7 +292,7 @@ def _proposal_codec(metadata, preset):
     return get_type(name, fork=metadata["version"], preset=preset)
 
 
-def load_proposal_json(text, *, preset="mainnet", headers=None) -> BlockResponse:
+def load_proposal_json(text, *, preset, headers=None) -> BlockResponse:
     """Select a proposal codec from JSON metadata without decoding its data in Python."""
     if isinstance(text, str):
         if len(text) > MAX_INPUT_SIZE:
@@ -306,7 +306,7 @@ def load_proposal_json(text, *, preset="mainnet", headers=None) -> BlockResponse
     return BlockResponse(value, metadata)
 
 
-def load_proposal_ssz(data, *, headers, preset="mainnet") -> BlockResponse:
+def load_proposal_ssz(data, *, headers, preset) -> BlockResponse:
     """Select the SSZ proposal codec using Beacon API HTTP response headers."""
     metadata = _response_metadata({}, headers)
     return BlockResponse(_proposal_codec(metadata, preset).load_ssz(data), metadata)

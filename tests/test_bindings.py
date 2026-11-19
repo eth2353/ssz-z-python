@@ -60,7 +60,7 @@ def test_unsigned_integers(bits, preset):
 
 
 def test_known_checkpoint_root_and_unordered_json():
-    codec = get_type("Checkpoint", fork="gloas")
+    codec = get_type("Checkpoint", fork="gloas", preset="mainnet")
     root = b"\x12" * 32
     value = codec.load_json('{"root":"0x' + root.hex() + '","epoch":"123"}')
     assert value.hash_tree_root() == hashlib.sha256((123).to_bytes(32, "little") + root).digest()
@@ -72,7 +72,7 @@ def test_known_checkpoint_root_and_unordered_json():
 )
 def test_bad_container(value):
     with pytest.raises(SSZError):
-        get_type("Checkpoint", fork="gloas").load_json(json_document(value))
+        get_type("Checkpoint", fork="gloas", preset="mainnet").load_json(json_document(value))
 
 
 @pytest.mark.parametrize(
@@ -80,11 +80,11 @@ def test_bad_container(value):
 )
 def test_bad_json(text):
     with pytest.raises(SSZError):
-        get_type("Checkpoint", fork="gloas").load_json(text)
+        get_type("Checkpoint", fork="gloas", preset="mainnet").load_json(text)
 
 
 def test_invalid_binary_inputs():
-    boolean = get_type("Boolean", fork="primitive")
+    boolean = get_type("Boolean", fork="primitive", preset="mainnet")
     for data in [b"", b"\x02", b"\x00\x00"]:
         for operation in [boolean.load_ssz, boolean.hash_tree_root_from_ssz]:
             with pytest.raises(SSZError):
@@ -134,12 +134,15 @@ def test_bitfield_bounds():
 
 
 def test_names_and_independent_defaults():
-    for kwargs in [{"fork": "unknown"}, {"fork": "gloas", "preset": "unknown"}]:
+    for kwargs in [
+        {"fork": "unknown", "preset": "mainnet"},
+        {"fork": "gloas", "preset": "unknown"},
+    ]:
         with pytest.raises(ValueError):
             get_type("BeaconState", **kwargs)
     with pytest.raises(ValueError):
-        get_type("not_a_type", fork="gloas")
-    codec = get_type("Checkpoint", fork="gloas")
+        get_type("not_a_type", fork="gloas", preset="mainnet")
+    codec = get_type("Checkpoint", fork="gloas", preset="mainnet")
     assert codec.default().field("epoch") == 0
     schema = codec.schema
     schema["fields"].clear()
@@ -164,8 +167,10 @@ def test_concurrent_native_calls():
 
 
 def test_progressive_gloas_schemas():
-    assert get_type("BeaconState", fork="gloas").schema["progressive"]
-    assert get_type("ExecutionRequests", fork="gloas").schema["fields"]["deposits"]["progressive"]
+    assert get_type("BeaconState", fork="gloas", preset="mainnet").schema["progressive"]
+    assert get_type("ExecutionRequests", fork="gloas", preset="mainnet").schema["fields"][
+        "deposits"
+    ]["progressive"]
     gloas = get_type("Attestation", preset="minimal", fork="gloas")
     electra = get_type("Attestation", fork="electra", preset="minimal")
     assert gloas.default().to_ssz() == electra.default().to_ssz()
@@ -179,12 +184,12 @@ def test_progressive_gloas_schemas():
 
 
 def test_json_input_is_always_a_document():
-    codec = get_type("Uint64", fork="primitive")
+    codec = get_type("Uint64", fork="primitive", preset="mainnet")
     assert codec.load_json('"001"').to_json() == b'"1"'
     for text in ["001", "-0", "+1"]:
         with pytest.raises(SSZError):
             codec.load_json(text)
-    byte = get_type("Bytes4", fork="primitive")
+    byte = get_type("Bytes4", fork="primitive", preset="mainnet")
     assert byte.load_json('"0x01020304"').to_ssz() == b"\x01\x02\x03\x04"
     with pytest.raises(SSZError):
         byte.load_json("0x01020304")
@@ -222,7 +227,7 @@ def test_ssz_mutations_are_rejected_or_round_trip(fork):
 
 
 def test_object_conversion_api_is_removed():
-    codec = get_type("Checkpoint", fork="gloas")
+    codec = get_type("Checkpoint", fork="gloas", preset="mainnet")
     for name in (
         "load_obj",
         "serialize",
@@ -241,7 +246,7 @@ def test_object_conversion_api_is_removed():
 
 @pytest.mark.parametrize("text,expected", [(b"true", b"\x01"), (b"false", b"\x00")])
 def test_json_boolean_literals(text, expected):
-    value = get_type("Boolean", fork="primitive").load_json(text)
+    value = get_type("Boolean", fork="primitive", preset="mainnet").load_json(text)
     assert value.to_ssz() == expected
     assert value.to_json() == text
 
@@ -251,16 +256,24 @@ def test_json_boolean_literals(text, expected):
 )
 def test_json_booleans_reject_other_representations(text):
     with pytest.raises(SSZError):
-        get_type("Boolean", fork="primitive").load_json(text)
+        get_type("Boolean", fork="primitive", preset="mainnet").load_json(text)
 
 
 def test_fork_must_be_explicit():
     with pytest.raises(TypeError, match="fork"):
-        get_type("BeaconBlock")
+        get_type("BeaconBlock", preset="mainnet")
     with pytest.raises(TypeError, match="fork"):
-        get_type("Uint64")
+        get_type("Uint64", preset="mainnet")
     with pytest.raises(TypeError, match="fork"):
-        list_types()
-    assert get_type("Uint64", fork="primitive").load_json('"1"').to_ssz() == (1).to_bytes(
-        8, "little"
-    )
+        list_types(preset="mainnet")
+    assert get_type("Uint64", fork="primitive", preset="mainnet").load_json('"1"').to_ssz() == (
+        1
+    ).to_bytes(8, "little")
+
+
+@pytest.mark.parametrize("name", ["BeaconBlock", "Uint64"])
+def test_preset_must_be_explicit(name):
+    with pytest.raises(TypeError, match="preset"):
+        get_type(name, fork="gloas")
+    with pytest.raises(TypeError, match="preset"):
+        list_types(fork="gloas")

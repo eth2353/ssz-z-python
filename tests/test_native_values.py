@@ -101,7 +101,9 @@ def test_sign_fixed_and_variable_values(name):
         )
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
     with pytest.raises((SSZError, ValueError)):
-        get_type("Uint64", fork="primitive").load_json(json_document(1)).sign(bytes(96))
+        get_type("Uint64", fork="primitive", preset="mainnet").load_json(json_document(1)).sign(
+            bytes(96)
+        )
 
 
 @pytest.mark.parametrize(
@@ -124,11 +126,11 @@ def test_sign_fixed_and_variable_values(name):
 )
 def test_native_json_rejects_invalid_values(text):
     with pytest.raises(SSZError):
-        get_type("Checkpoint", fork="gloas").load_json(text)
+        get_type("Checkpoint", fork="gloas", preset="mainnet").load_json(text)
 
 
 def test_native_json_order_escapes_and_rest():
-    codec = get_type("Checkpoint", fork="gloas")
+    codec = get_type("Checkpoint", fork="gloas", preset="mainnet")
     expected = {"epoch": 12, "root": bytes(32)}
     text = '{"root":"0x' + "00" * 32 + '","epo\\u0063h":"0012"}'
     native = codec.load_json(text)
@@ -153,13 +155,13 @@ def test_native_json_order_escapes_and_rest():
     "bad", ["", "0x", "0x0", "0xzz", "0x00 00", "00000000", "0X00000000", "0x００００００００"]
 )
 def test_hex_validation_all_paths(bad):
-    codec = get_type("Bytes4", fork="primitive")
+    codec = get_type("Bytes4", fork="primitive", preset="mainnet")
     with pytest.raises(SSZError):
         codec.load_json(json.dumps(bad))
 
 
 def test_input_snapshots_and_type_checks():
-    codec = get_type("Checkpoint", fork="gloas")
+    codec = get_type("Checkpoint", fork="gloas", preset="mainnet")
     encoded = codec.default().to_ssz()
     source = bytearray(encoded)
     native = codec.load_ssz(source)
@@ -172,14 +174,14 @@ def test_input_snapshots_and_type_checks():
     with pytest.raises(FrozenInstanceError):
         native._ssz = b"changed"
     with pytest.raises(FrozenInstanceError):
-        native.codec = get_type("Uint64", fork="primitive")
+        native.codec = get_type("Uint64", fork="primitive", preset="mainnet")
     del native
     assert output == encoded
     with pytest.raises(SSZError):
         NativeValue(codec, b"bad")
     native = codec.load_ssz(encoded)
     with pytest.raises(TypeError):
-        get_type("BeaconBlock", fork="gloas").load_json(native)
+        get_type("BeaconBlock", fork="gloas", preset="mainnet").load_json(native)
     with pytest.raises(ValueError, match="not a block"):
         BlockValue(native)
     with pytest.raises(TypeError):
@@ -300,7 +302,7 @@ def test_native_failure_after_partial_allocation():
     ],
 )
 def test_progressive_bytes_and_uint8_lists_have_distinct_json(name, value, expected_json):
-    codec = get_type(name, fork="gloas")
+    codec = get_type(name, fork="gloas", preset="mainnet")
     assert codec.load_json(json_document(value)).to_ssz() == b"\x01\xff"
     assert json_value(value) == expected_json
     assert json.loads(codec.load_json(json_document(expected_json)).to_json()) == json_value(value)

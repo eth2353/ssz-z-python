@@ -125,3 +125,10 @@ def test_blob_data_is_not_materialized_by_python_metadata_parser(monkeypatch):
         load_proposal_json(text, preset="minimal").value.to_ssz()
         == codec.load_json(json_document(value)).to_ssz()
     )
+
+
+def test_proposal_loaders_require_explicit_preset():
+    with pytest.raises(TypeError, match="preset"):
+        load_proposal_json(b"{}")
+    with pytest.raises(TypeError, match="preset"):
+        load_proposal_ssz(b"", headers={})
