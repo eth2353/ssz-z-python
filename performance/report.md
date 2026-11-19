@@ -57,10 +57,13 @@ one three-pass run should not be treated as precise regression estimates.
 Direct default SSZ is the clear gain: block defaults are about 2.8–2.9× faster,
 and state defaults about 24.7× faster.
 
-The signing tradeoff is intentional and substantial when a caller requests the
+**Follow-up:** cached signed-root derivation has since been restored. The table
+above records the intermediate implementation before that restoration.
+
+The measured signing tradeoff was substantial when a caller requested the
 **signed** root after already hashing the unsigned block. Before the audit,
 `sign()` cheaply derived and cached that root from the cached unsigned root.
-Now `sign()` leaves the signed root empty, and its first request performs native
+In that measured revision, `sign()` left the signed root empty, and its first request performed native
 hashing of the signed value. The combined row sums paired sign/root timings
 before aggregating, so it includes work formerly performed inside `sign()`.
 This differs from the normal proposal flow, which requests the **unsigned**

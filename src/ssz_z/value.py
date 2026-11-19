@@ -1,5 +1,6 @@
 """Immutable SSZ-backed values with Python-managed lifetimes."""
 
+import hashlib
 import struct
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -181,6 +182,7 @@ class NativeValue:
 
         This wraps a signature; it does not perform BLS signing or verification.
         The returned value owns its bytes independently of this value's lifetime.
+        A cached unsigned root is reused to derive the signed root cheaply.
         """
         signature = _signature_bytes(signature)
         target = self.codec._signed_codec
@@ -188,7 +190,14 @@ class NativeValue:
         size = sum(len(part) for part in parts)
         if size > MAX_INPUT_SIZE:
             raise SSZError(f"Signed output exceeds {MAX_INPUT_SIZE} bytes")
-        return NativeValue._from_validated(target, b"".join(parts))
+        signed = NativeValue._from_validated(target, b"".join(parts))
+        if self._root is not None:
+            sig_root = hashlib.sha256(
+                hashlib.sha256(signature[:64]).digest()
+                + hashlib.sha256(signature[64:] + bytes(32)).digest()
+            ).digest()
+            object.__setattr__(signed, "_root", hashlib.sha256(self._root + sig_root).digest())
+        return signed
 
     def __repr__(self) -> str:
         return (

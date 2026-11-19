@@ -88,18 +88,19 @@ def test_blob_contents_fast_path(fork, preset):
 @pytest.mark.parametrize(
     "name", ["VoluntaryExit", "BeaconBlock", "ExecutionPayloadEnvelope", "ProposerPreferences"]
 )
-def test_sign_fixed_and_variable_values(name):
+@pytest.mark.parametrize("signature", [bytes(96), bytes(range(96))])
+def test_sign_fixed_and_variable_values(name, signature):
     codec = get_type(name, preset="minimal", fork="gloas")
     native = codec.default()
     # Exercise signing both before and after caching the unsigned root.
     for cached in (False, True):
         if cached:
             native.hash_tree_root()
-        signed = native.sign(bytes(96))
+        signed = native.sign(signature)
         assert json.loads(signed.to_json()) == json_value(
-            {"message": json.loads(codec.default().to_json()), "signature": bytes(96)}
+            {"message": json.loads(codec.default().to_json()), "signature": signature}
         )
-        assert signed._root is None
+        assert (signed._root is not None) == cached
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
     with pytest.raises((SSZError, ValueError)):
         get_type("Uint64", fork="primitive", preset="mainnet").load_json(json_document(1)).sign(
@@ -214,7 +215,6 @@ def test_native_concurrent_read_and_sign():
         assert json.loads(signed.to_json()) == json_value(
             {"message": expected_obj, "signature": bytes([index]) * 96}
         )
-        assert signed._root is None
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -333,3 +333,29 @@ def test_default_uses_one_native_ssz_operation(monkeypatch):
     value = codec.default()
     assert calls == [Operation.DEFAULT_SSZ]
     assert codec.load_json(value.to_json()) == value
+
+
+def test_sign_reuses_cached_root_without_native_calls(monkeypatch):
+    from ssz_z import types as implementation
+
+    codec = get_type("BeaconBlock", fork="gloas", preset="minimal")
+    value = codec.default()
+    original_root = value.hash_tree_root()
+    signature = bytes(range(96))
+    target = codec._signed_codec
+    expected = target.load_json(
+        json_document(
+            {
+                "message": json.loads(value.to_json()),
+                "signature": signature,
+            }
+        )
+    ).hash_tree_root()
+
+    def unexpected_call(*args, **kwargs):
+        pytest.fail("Signing with a cached root must not require native calls")
+
+    monkeypatch.setattr(implementation, "call", unexpected_call)
+    signed = value.sign(signature)
+    assert signed.hash_tree_root() == expected
+    assert value.hash_tree_root() == original_root

@@ -14,7 +14,7 @@ Decisions:
 - Keep one dev dependency group.
 
 Implemented improvements include isolated build constraints, native-only cache
-invalidation, hooks without project installation, lazy signed roots, direct
+invalidation, hooks without project installation, cached signed-root derivation, direct
 default SSZ, removal of msgspec, public type checking, and manifest-based
 provenance. The schema generator rejects mismatched or edited specification
 checkouts.
@@ -22,3 +22,7 @@ checkouts.
 [README.md](README.md) describes the current behavior;
 [VALIDATION.md](VALIDATION.md) contains validation and regeneration commands;
 [UPSTREAM.json](UPSTREAM.json) owns dependency and ABI metadata.
+
+The proposed removal of signed-root derivation was reverted after benchmarking:
+reusing a cached unsigned root is much cheaper than hashing the signed block
+from scratch. Roots remain lazy when the unsigned root has not been computed.

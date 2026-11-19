@@ -139,7 +139,7 @@ def run(case, order):
         json_flow = timed("proposal_json", lambda: proposal("json"))
         ssz_flow = timed("proposal_ssz", lambda: proposal("ssz"))
         assert json_flow[:2] == ssz_flow[:2]
-        # The audit deliberately removed eager signed-root computation.
+        # Measure signing and root retrieval separately to expose cache behavior.
         unsigned = module.get_type("BeaconBlock", fork="fulu", preset="mainnet").load_json(
             unsigned_json
         )

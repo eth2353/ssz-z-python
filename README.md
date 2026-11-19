@@ -89,8 +89,9 @@ no specification length bound.
 `value.field("body.signed_execution_payload_bid.message.builder_index")` reads
 a scalar or byte field from nested containers without native calls.
 `value.sign(signature)` attaches an existing 96-byte signature when a compatible
-`Signed<Type>` wrapper exists. It performs no BLS cryptography. New signed values
-start with an empty root cache; roots are computed only on request.
+`Signed<Type>` wrapper exists. It performs no BLS cryptography. When the unsigned root is cached,
+signing cheaply derives and caches the signed root from it. Otherwise the signed
+root is computed on its first request.
 
 ## Beacon API proposals
 
