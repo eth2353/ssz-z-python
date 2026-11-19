@@ -2,8 +2,9 @@
 # Paths precede optional imports; timed callbacks are invoked synchronously inside each loop.
 """Compare the saved spy-ssz pin with the optimized SSZ bindings on the same corpus.
 
-Use Vero's Python interpreter and pass the site-packages directory containing
-its original spy-ssz build. No packages or repository files are modified.
+Run with the bindings' Python interpreter and pass the site-packages directory
+containing the pinned spy-ssz build. Accepts network manifests or flat json/ssz
+directories. Both libraries run in the same process and interpreter.
 """
 
 import argparse
@@ -26,6 +27,46 @@ parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=3)
 parser.add_argument("--limit", type=int, default=0)
 args = parser.parse_args()
+if args.rounds < 1 or args.limit < 0:
+    parser.error("--rounds must be positive and --limit nonnegative")
+
+
+def corpus_datasets(root):
+    if (root / "json").is_dir() and (root / "ssz").is_dir():
+        json_files = {p.stem: p for p in (root / "json").glob("*.json")}
+        ssz_files = {p.stem: p for p in (root / "ssz").glob("*.ssz")}
+        if not json_files or json_files.keys() != ssz_files.keys():
+            raise ValueError("Corpus must contain matching, nonempty JSON/SSZ file sets")
+        grouped = defaultdict(list)
+        for stem, json_path in sorted(json_files.items(), key=lambda pair: int(pair[0])):
+            json_bytes = json_path.read_bytes()
+            document = json.loads(json_bytes)
+            slot = document["data"]["message"]["slot"]
+            if str(slot) != stem:
+                raise ValueError(f"File name and block slot disagree: {json_path}")
+            grouped[document["version"]].append(
+                {
+                    "slot": slot,
+                    "json": str(json_path.relative_to(root)),
+                    "ssz": str(ssz_files[stem].relative_to(root)),
+                    "json_sha256": hashlib.sha256(json_bytes).hexdigest(),
+                    "ssz_sha256": hashlib.sha256(ssz_files[stem].read_bytes()).hexdigest(),
+                }
+            )
+        return [
+            (f"{root.name}-{fork}", root, {"fork": fork, "blocks": entries})
+            for fork, entries in sorted(grouped.items())
+        ]
+    datasets = [
+        (p.parent.name, p.parent, json.loads(p.read_bytes()))
+        for p in sorted(root.glob("*/manifest.json"))
+    ]
+    if not datasets:
+        raise ValueError(f"No corpus datasets found under {root}")
+    return datasets
+
+
+datasets = corpus_datasets(args.corpus)
 sys.path.append(str(args.spy_site_packages))
 
 
@@ -50,7 +91,8 @@ metadata = {
     "python": sys.version,
     "platform": platform.platform(),
     "spy_module": spy_ssz.__file__,
-    "corpus": str(args.corpus),
+    "corpus": str(args.corpus.resolve()),
+    "corpus_manifests": {name: manifest for name, _, manifest in datasets},
     "rounds": args.rounds,
     "limit": args.limit,
     "mode": "native",
@@ -85,6 +127,8 @@ source_files = [
     *source_root.glob("native/*.zig"),
     source_root / "build.zig",
     source_root / "pyproject.toml",
+    source_root / "UPSTREAM.json",
+    Path(__file__).resolve(),
 ]
 metadata["ssz_z_source_files_sha256"] = {
     str(p.relative_to(source_root)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -94,6 +138,12 @@ metadata["ssz_z_native_files_sha256"] = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
     for p in sorted(Path(ssz_z.__file__).parent.glob("_native/*"))
     if p.suffix in {".dylib", ".so", ".dll"}
+}
+spy_root = Path(spy_ssz.__file__).parent
+metadata["spy_files_sha256"] = {
+    str(p.relative_to(spy_root)): hashlib.sha256(p.read_bytes()).hexdigest()
+    for p in sorted(spy_root.rglob("*"))
+    if p.is_file() and p.suffix in {".py", ".so", ".dylib", ".dll"}
 }
 assert Path(spy_ssz.__file__).resolve().is_relative_to(args.spy_site_packages.resolve())
 assert (
@@ -108,8 +158,7 @@ summary = {"metadata": metadata, "networks": {}}
 with (args.output / "samples.csv").open("w", newline="") as stream:
     writer = csv.writer(stream)
     writer.writerow(["network", "fork", "round", "slot", "library", "metric", "nanoseconds"])
-    for network in ("mainnet", "hoodi", "gloas"):
-        manifest = json.loads((args.corpus / network / "manifest.json").read_bytes())
+    for network, corpus_root, manifest in datasets:
         fork = manifest["fork"]
         entries = manifest["blocks"]
         if args.limit:
@@ -119,8 +168,8 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
             ]
         cases = []
         for entry in entries:
-            js = (args.corpus / network / entry["json"]).read_bytes()
-            ss = (args.corpus / network / entry["ssz"]).read_bytes()
+            js = (corpus_root / entry["json"]).read_bytes()
+            ss = (corpus_root / entry["ssz"]).read_bytes()
             assert hashlib.sha256(js).hexdigest() == entry["json_sha256"]
             assert hashlib.sha256(ss).hexdigest() == entry["ssz_sha256"]
             cases.append((str(entry["slot"]), js, ss))
