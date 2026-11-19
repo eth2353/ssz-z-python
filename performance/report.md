@@ -16,7 +16,71 @@ percentiles, input hashes, source/native hashes, and interpreter provenance.
 Raw samples and metadata are retained locally in
 `performance/results/2026-11-19-beacon-blocks/`.
 
-## Results
+## Direct comparison with pre-audit ssz-z-python
+
+A separate run compares revision `5788045` (immediately before the audit changes)
+against the post-audit implementation, with the direct comparison harness at
+`f2b4ab3`. Both revisions were built using Zig 0.16.0, `ReleaseSafe`, and baseline
+CPU settings, with identical native dependency pins. Both Python packages and
+their separate native libraries were loaded into one process on the same
+Python 3.12.16 interpreter. Library order alternated by block and pass.
+
+All 296 Fulu blocks were processed three times, after 12 warmups. All output,
+root, header, and signing equivalence checks passed. Defaults were measured
+separately with 10 calls per type per pass, checking identical default SSZ bytes.
+The [before/after summary](before-after-summary.json) records the measurements,
+input digests, and both packages' Python/native hashes. Raw samples are under
+`performance/results/2026-11-19-before-after/`.
+
+Milliseconds per operation, median of three pass means; negative change means
+less time. Default rows measure construction plus retrieval of the default SSZ.
+
+| Operation | Before audit | After audit | Time change |
+| --- | ---: | ---: | ---: |
+| JSON decode | 1.09470 | 1.12672 | +2.9% |
+| JSON encode | 0.39378 | 0.39348 | -0.1% |
+| SSZ decode / validation | 0.00657 | 0.00667 | +1.6% |
+| Value to root | 0.76983 | 0.77295 | +0.4% |
+| SSZ to root | 0.77053 | 0.76558 | -0.6% |
+| Proposal flow, JSON | 2.31493 | 2.31784 | +0.1% |
+| Proposal flow, SSZ | 0.80157 | 0.81413 | +1.6% |
+| Default BeaconBlock | 0.02428 | 0.00882 | -63.7% |
+| Default SignedBeaconBlock | 0.02390 | 0.00820 | -65.7% |
+| Default BeaconState | 21.81855 | 0.88383 | -95.9% |
+| Sign an already-hashed bare block | 0.02238 | 0.01251 | -44.1% |
+| Retrieve signed root after signing | 0.00018 | 0.77037 | +428864.7% |
+| Sign + retrieve signed root, combined | 0.02255 | 0.78308 | +3372.3% |
+
+The ordinary proposal flow is essentially unchanged in this run (+0.1% for
+JSON, +1.6% for SSZ). JSON decoding measured +2.9%; these small differences from
+one three-pass run should not be treated as precise regression estimates.
+Direct default SSZ is the clear gain: block defaults are about 2.8–2.9× faster,
+and state defaults about 24.7× faster.
+
+The signing tradeoff is intentional and substantial when a caller requests the
+**signed** root after already hashing the unsigned block. Before the audit,
+`sign()` cheaply derived and cached that root from the cached unsigned root.
+Now `sign()` leaves the signed root empty, and its first request performs native
+hashing of the signed value. The combined row sums paired sign/root timings
+before aggregating, so it includes work formerly performed inside `sign()`.
+This differs from the normal proposal flow, which requests the **unsigned**
+block root and does not hash the signed publication.
+
+Reproduce after preparing the pre-audit source snapshot and its native libraries:
+
+```sh
+.venv/bin/python performance/compare_revisions.py \
+  --before-source build/before-audit-5788045 --before-revision 5788045 \
+  --before-dependencies build/benchmark-spy-env/lib/python3.12/site-packages \
+  --corpus /tmp/beacon_blocks \
+  --output performance/results/2026-11-19-before-after --rounds 3
+```
+
+The dependency path supplies the pre-audit version's `msgspec`; it does not
+replace either bindings implementation. The isolated snapshot was extracted
+from `git archive 5788045` and built without modifying the working checkout.
+
+## Comparison with spy-ssz
 
 Times are milliseconds per block, reported as the **median of three pass means**;
 each pass processes every block. Comparisons use the unrounded measurements.
