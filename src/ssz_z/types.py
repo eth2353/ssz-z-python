@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 
 from ._native import FORKS, MAX_INPUT_SIZE, PRESETS, Operation, SSZError, call
+from ._schema import Schema
 from .value import NativeValue, _Layout, input_bytes
 
 
@@ -16,10 +17,10 @@ class SSZType:
     name: str
     fork: str
     preset: str
-    _schema: dict = field(repr=False, compare=False, hash=False)
+    _schema: Schema = field(repr=False, compare=False, hash=False)
 
     @property
-    def schema(self) -> dict:
+    def schema(self) -> Schema:
         """Return a copy of the schema reflected from the upstream Zig type."""
         return copy.deepcopy(self._schema)
 
@@ -31,11 +32,11 @@ class SSZType:
         return NativeValue._from_validated(self, self._call(Operation.DEFAULT_SSZ))
 
     @cached_property
-    def _layout(self):
+    def _layout(self) -> _Layout:
         return _Layout(self._schema)
 
     @cached_property
-    def _signed_codec(self):
+    def _signed_codec(self) -> "SSZType":
         target = get_type("Signed" + self.name, fork=self.fork, preset=self.preset)
         fields = target._schema.get("fields", {})
         if (
@@ -46,7 +47,7 @@ class SSZType:
             raise ValueError("No compatible signed wrapper for this value")
         return target
 
-    def _check_value(self, value: NativeValue):
+    def _check_value(self, value: NativeValue) -> None:
         if value.codec != self:
             raise ValueError("SSZ value belongs to a different type, fork, or preset")
 

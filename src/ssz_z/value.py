@@ -2,9 +2,10 @@
 
 import struct
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ._native import MAX_INPUT_SIZE, Operation, SSZError
+from ._schema import Schema
 
 if TYPE_CHECKING:
     from .types import SSZType
@@ -19,7 +20,7 @@ def input_bytes(data: bytes | bytearray | memoryview) -> bytes:
     return bytes(data)
 
 
-def _signature_bytes(signature):
+def _signature_bytes(signature: str | bytes | bytearray | memoryview) -> bytes:
     if isinstance(signature, str):
         if not signature.startswith("0x") or len(signature) != 194:
             raise SSZError("Signature must contain exactly 96 bytes")
@@ -37,7 +38,9 @@ def _signature_bytes(signature):
 class _Layout:
     """Precompute field positions once, rather than traverse values for projections."""
 
-    def __init__(self, schema):
+    def __init__(self, schema: Schema):
+        self.size: int | None
+        self.fields: dict[str, tuple[_Layout, int, int | None]]
         self.kind = schema["kind"]
         self.fields = {}
         if self.kind == "uint":
@@ -109,7 +112,7 @@ class _Layout:
             raise SSZError("Serialized output exceeds the input limit")
         return (*fixed, *variable)
 
-    def scalar(self, data):
+    def scalar(self, data: memoryview) -> int | bool | bytes:
         if self.kind == "uint":
             return int.from_bytes(data, "little")
         if self.kind == "bool":
@@ -131,18 +134,18 @@ class NativeValue:
     _ssz: bytes = field(repr=False)
     _root: bytes | None = field(repr=False, compare=False)
 
-    def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview):
+    def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview) -> None:
         data = input_bytes(data)
         codec._call(Operation.VALIDATE_SSZ, data)
         self._initialize(codec, data)
 
-    def _initialize(self, codec, data):
+    def _initialize(self, codec: "SSZType", data: bytes) -> None:
         object.__setattr__(self, "codec", codec)
         object.__setattr__(self, "_ssz", data)
         object.__setattr__(self, "_root", None)
 
     @classmethod
-    def _from_validated(cls, codec, data):
+    def _from_validated(cls, codec: "SSZType", data: bytes) -> "NativeValue":
         value = cls.__new__(cls)
         value._initialize(codec, data)
         return value
@@ -161,7 +164,7 @@ class NativeValue:
             object.__setattr__(self, "_root", root)
         return root
 
-    def field(self, path: str | tuple[str, ...]) -> Any:
+    def field(self, path: str | tuple[str, ...]) -> int | bool | bytes:
         """Project a scalar/byte field from nested containers without a native call."""
         if isinstance(path, str):
             path = tuple(path.split("."))

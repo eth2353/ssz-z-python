@@ -27,6 +27,8 @@ jobs:
         run: |
           uv sync --locked
           uv run --locked pytest --cov=ssz_z --cov-report=term-missing
+      - name: Check public types
+        run: uv run --locked mypy
       - name: Build sdist and wheel
         run: uv build
       - name: Test installed wheel

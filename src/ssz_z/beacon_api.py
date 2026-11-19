@@ -5,11 +5,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from ._json import decode_metadata
 from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
-from .types import get_type
+from .types import SSZType, get_type
 from .value import NativeValue, _signature_bytes, input_bytes
 
 
@@ -26,7 +26,7 @@ class BlockValue:
         default=None, init=False, repr=False, compare=False
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.value, NativeValue):
             raise TypeError("BlockValue requires a NativeValue")
         if self.value.codec.fork == "gloas" and self.value.codec.name == "BeaconBlockContents":
@@ -61,7 +61,7 @@ class BlockValue:
         """Hash the unsigned block, including when this value is a contents envelope."""
         return self._project_block()[1]
 
-    def _block_path(self):
+    def _block_path(self) -> tuple[str, ...]:
         name = self.value.codec.name
         if name == "BeaconBlockContents":
             return ("block",)
@@ -75,18 +75,21 @@ class BlockValue:
 
     @property
     def slot(self) -> int:
-        return self.value.field((*self._block_path(), "slot"))
+        return cast(int, self.value.field((*self._block_path(), "slot")))
 
     @property
     def builder_index(self) -> int:
-        return self.value.field(
-            (
-                *self._block_path(),
-                "body",
-                "signed_execution_payload_bid",
-                "message",
-                "builder_index",
-            )
+        return cast(
+            int,
+            self.value.field(
+                (
+                    *self._block_path(),
+                    "body",
+                    "signed_execution_payload_bid",
+                    "message",
+                    "builder_index",
+                )
+            ),
         )
 
     def sign(self, signature: str | bytes | bytearray | memoryview) -> "BlockValue":
@@ -101,7 +104,13 @@ class BlockValue:
         return result
 
 
-def _signed_contents(value, message_field, target_name, signed_field, signature):
+def _signed_contents(
+    value: NativeValue,
+    message_field: str,
+    target_name: str,
+    signed_field: str,
+    signature: str | bytes | bytearray | memoryview,
+) -> NativeValue:
     signature = _signature_bytes(signature)
     target = get_type(target_name, fork=value.codec.fork, preset=value.codec.preset)
     message_schema = target._schema["fields"][signed_field]["fields"]["message"]
@@ -128,7 +137,7 @@ class GloasProposal:
 
     value: NativeValue
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.value, NativeValue):
             raise TypeError("GloasProposal requires a NativeValue")
         if self.value.codec.fork != "gloas" or self.value.codec.name not in {
@@ -155,11 +164,16 @@ class GloasProposal:
     def is_self_build(self) -> bool:
         return self.block.builder_index == (1 << 64) - 1
 
-    def sign_block(self, signature) -> NativeValue:
+    def sign_block(self, signature: str | bytes | bytearray | memoryview) -> NativeValue:
         """Attach a block signature; the publication contains only the signed block."""
         return self.block.sign(signature).value
 
-    def sign_payload(self, signature, *, envelope: NativeValue | None = None) -> NativeValue:
+    def sign_payload(
+        self,
+        signature: str | bytes | bytearray | memoryview,
+        *,
+        envelope: NativeValue | None = None,
+    ) -> NativeValue:
         """Attach a payload signature, retaining proof/blob data for stateless publication.
 
         A stateful proposal requires the caller to fetch its envelope from the
@@ -168,6 +182,7 @@ class GloasProposal:
         """
         if not self.is_self_build:
             raise ValueError("The builder must reveal the execution payload for a builder bid")
+        prefix: tuple[str, ...]
         if self.payload_included:
             if envelope is not None:
                 raise ValueError("The proposal already includes its execution payload envelope")
@@ -203,7 +218,7 @@ class GloasProposal:
                 "signed_execution_payload_envelope",
                 signature,
             )
-        return envelope.sign(signature)
+        return source.sign(signature)
 
 
 _HEADER_FIELDS = {
@@ -217,7 +232,12 @@ _HEADER_FIELDS = {
 }
 
 
-def _freeze(value):
+type MetadataValue = (
+    None | bool | int | float | str | tuple[MetadataValue, ...] | Mapping[str, MetadataValue]
+)
+
+
+def _freeze(value: Any) -> MetadataValue:
     if isinstance(value, dict):
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
     if isinstance(value, list):
@@ -230,9 +250,9 @@ class BlockResponse:
     """A decoded Beacon API payload and its immutable response metadata."""
 
     value: NativeValue
-    metadata: Mapping[str, Any]
+    metadata: Mapping[str, MetadataValue]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
 
     @cached_property
@@ -256,9 +276,11 @@ def _metadata_value(key, value):
     return value
 
 
-def _header_metadata(headers):
-    metadata = {}
-    for header, value in (headers or {}).items():
+def _header_metadata(headers: Mapping[str, str] | None) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    value: Any
+    for header, raw_value in (headers or {}).items():
+        value = raw_value
         key = _HEADER_FIELDS.get(header.lower())
         if key is None:
             continue
@@ -282,7 +304,7 @@ def _header_metadata(headers):
     return metadata
 
 
-def _proposal_codec(metadata, preset):
+def _proposal_codec(metadata: Mapping[str, Any], preset: str) -> SSZType:
     if metadata["version"] == "gloas":
         name = "BeaconBlockContents" if metadata["execution_payload_included"] else "BeaconBlock"
     else:
@@ -292,7 +314,9 @@ def _proposal_codec(metadata, preset):
     return get_type(name, fork=metadata["version"], preset=preset)
 
 
-def load_proposal_json(text, *, preset, headers) -> BlockResponse:
+def load_proposal_json(
+    text: str | bytes | bytearray | memoryview, *, preset: str, headers: Mapping[str, str] | None
+) -> BlockResponse:
     """Select a proposal codec from required headers, checking JSON metadata against them."""
     metadata = _header_metadata(headers)
     if isinstance(text, str):
@@ -315,7 +339,9 @@ def load_proposal_json(text, *, preset, headers) -> BlockResponse:
     return BlockResponse(value, metadata)
 
 
-def load_proposal_ssz(data, *, headers, preset) -> BlockResponse:
+def load_proposal_ssz(
+    data: bytes | bytearray | memoryview, *, headers: Mapping[str, str] | None, preset: str
+) -> BlockResponse:
     """Select the SSZ proposal codec using Beacon API HTTP response headers."""
     metadata = _header_metadata(headers)
     return BlockResponse(_proposal_codec(metadata, preset).load_ssz(data), metadata)
