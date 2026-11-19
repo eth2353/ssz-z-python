@@ -99,6 +99,7 @@ def test_sign_fixed_and_variable_values(name):
         assert json.loads(signed.to_json()) == json_value(
             {"message": json.loads(codec.default().to_json()), "signature": bytes(96)}
         )
+        assert signed._root is None
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
     with pytest.raises((SSZError, ValueError)):
         get_type("Uint64", fork="primitive", preset="mainnet").load_json(json_document(1)).sign(
@@ -213,6 +214,7 @@ def test_native_concurrent_read_and_sign():
         assert json.loads(signed.to_json()) == json_value(
             {"message": expected_obj, "signature": bytes([index]) * 96}
         )
+        assert signed._root is None
         assert signed.hash_tree_root() == signed.codec.hash_tree_root_from_ssz(signed.to_ssz())
 
     with ThreadPoolExecutor(max_workers=6) as pool:
