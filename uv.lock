@@ -6,6 +6,9 @@ requires-python = ">=3.12"
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
+[manifest]
+build-constraints = [{ name = "setuptools", specifier = "==82.0.1" }]
+
 [[package]]
 name = "cfgv"
 version = "3.5.0"
