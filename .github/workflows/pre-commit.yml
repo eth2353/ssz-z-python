@@ -28,4 +28,6 @@ jobs:
           path: ${{ env.PRE_COMMIT_HOME }}
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Run pre-commit
-        run: uv run --locked pre-commit run --all-files --show-diff-on-failure --color=always
+        run: |
+          uv sync --locked --only-group dev
+          uv run --no-sync pre-commit run --all-files --show-diff-on-failure --color=always
