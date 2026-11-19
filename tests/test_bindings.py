@@ -287,7 +287,10 @@ def test_concurrent_first_hash_in_fresh_process(preset):
     import sys
 
     subprocess.run(
-        [sys.executable, "-c", """
+        [
+            sys.executable,
+            "-c",
+            """
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -304,7 +307,9 @@ def hash_once(_):
     return codec.hash_tree_root_from_ssz(value.to_ssz())
 with ThreadPoolExecutor(max_workers=16) as pool:
     assert all(root == expected for root in pool.map(hash_once, range(16)))
-""", preset],
+""",
+            preset,
+        ],
         check=True,
         timeout=30,
     )

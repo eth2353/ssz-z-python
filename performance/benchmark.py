@@ -143,7 +143,9 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
             if fork != "gloas":
                 value = {"block": value, "kzg_proofs": [], "blobs": []}
             production_json = json.dumps({"data": value}, separators=(",", ":")).encode()
-            production_ssz = new_proposal.load_json(json.dumps(value, separators=(",", ":")).encode()).to_ssz()
+            production_ssz = new_proposal.load_json(
+                json.dumps(value, separators=(",", ":")).encode()
+            ).to_ssz()
             signature = signed_value["signature"]
             output = {}
             elapsed = {}

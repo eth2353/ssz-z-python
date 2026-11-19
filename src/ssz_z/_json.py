@@ -4,6 +4,7 @@ import json
 
 from ._native import SSZError
 
+
 def _unique_object(pairs):
     result = {}
     for key, value in pairs:
