@@ -1,11 +1,20 @@
 """JSON decoders for native schema and response metadata."""
 
 import json
+from typing import TypedDict, cast
 
 from ._native import SSZError
 
+type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
 
-def _unique_object(pairs):
+
+class MetadataEnvelope(TypedDict):
+    metadata: dict[str, JSONValue]
+    data_start: int
+    data_end: int
+
+
+def _unique_object(pairs: list[tuple[str, JSONValue]]) -> dict[str, JSONValue]:
     result = {}
     for key, value in pairs:
         if key in result:
@@ -14,9 +23,10 @@ def _unique_object(pairs):
     return result
 
 
-def decode_metadata(data: bytes) -> dict:
+def decode_metadata(data: bytes) -> MetadataEnvelope:
     """Decode only the small native metadata envelope, rejecting duplicate keys."""
     try:
-        return json.loads(data, object_pairs_hook=_unique_object)
+        # The native REST_METADATA operation owns this envelope schema.
+        return cast(MetadataEnvelope, json.loads(data, object_pairs_hook=_unique_object))
     except (ValueError, UnicodeError, RecursionError) as error:
         raise SSZError(f"Invalid JSON metadata: {error}") from error

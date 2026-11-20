@@ -7,7 +7,7 @@ from functools import cached_property
 from types import MappingProxyType
 from typing import Any, cast
 
-from ._json import decode_metadata
+from ._json import JSONValue, decode_metadata
 from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
 from .types import SSZType, get_type
 from .value import NativeValue, _signature_bytes, input_bytes
@@ -237,10 +237,10 @@ type MetadataValue = (
 )
 
 
-def _freeze(value: Any) -> MetadataValue:
-    if isinstance(value, dict):
+def _freeze(value: JSONValue | MetadataValue) -> MetadataValue:
+    if isinstance(value, Mapping):
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return tuple(map(_freeze, value))
     return value
 
@@ -264,7 +264,7 @@ class BlockResponse:
         )
 
 
-def _metadata_value(key, value):
+def _metadata_value(key: str, value: JSONValue | MetadataValue) -> JSONValue | MetadataValue:
     if key in {"execution_payload_blinded", "execution_payload_included"}:
         if type(value) is not bool:
             raise SSZError(f"Invalid {key} metadata: expected a JSON boolean")
@@ -325,8 +325,8 @@ def load_proposal_json(
         text = text.encode("utf-8")
     text = input_bytes(text)
     envelope = decode_metadata(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
-    for key, value in envelope["metadata"].items():
-        value = _metadata_value(key, value)
+    for key, raw_value in envelope["metadata"].items():
+        value = _metadata_value(key, raw_value)
         if key in _HEADER_FIELDS.values():
             if key not in metadata:
                 raise SSZError(f"Missing response header for {key}")
@@ -335,8 +335,8 @@ def load_proposal_json(
         else:
             metadata[key] = value
     codec = _proposal_codec(metadata, preset)
-    value = codec.load_json(text[envelope["data_start"] : envelope["data_end"]])
-    return BlockResponse(value, metadata)
+    proposal = codec.load_json(text[envelope["data_start"] : envelope["data_end"]])
+    return BlockResponse(proposal, metadata)
 
 
 def load_proposal_ssz(

@@ -31,7 +31,7 @@ class SSZError(ValueError):
 
 
 @lru_cache(maxsize=len(PRESETS))
-def _library(preset: str):
+def _library(preset: str) -> ctypes.CDLL:
     if preset not in PRESETS:
         raise ValueError(f"Unknown preset {preset!r}; choose from {PRESETS}")
     filename = (

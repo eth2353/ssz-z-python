@@ -2,6 +2,7 @@
 
 import hashlib
 import struct
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -72,7 +73,7 @@ class _Layout:
         else:
             self.size = None
 
-    def field(self, data, name):
+    def field(self, data: memoryview, name: str) -> tuple["_Layout", memoryview]:
         try:
             child, offset, next_offset = self.fields[name]
         except KeyError as error:
@@ -86,7 +87,9 @@ class _Layout:
             start, end = offset, offset + child.size
         return child, data[start:end]
 
-    def container_parts(self, fields):
+    def container_parts(
+        self, fields: Mapping[str, tuple[bytes | memoryview, ...]]
+    ) -> tuple[bytes | memoryview, ...]:
         """Assemble validated field segments, deriving SSZ offsets from the schema.
 
         Internal callers supply canonical encoded fields from validated values
@@ -94,7 +97,8 @@ class _Layout:
         """
         if self.kind != "container" or fields.keys() != self.fields.keys():
             raise ValueError("Encoded fields must match the container schema")
-        fixed, variable = [], []
+        fixed: list[bytes | memoryview] = []
+        variable: list[bytes | memoryview] = []
         offset = self.fixed_section_size
         for name, (child, _, _) in self.fields.items():
             parts = fields[name]
