@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ._metadata import ABI_VERSION, PRESETS
 
+ALLOCATION_FAILURE = 2
+
 MAX_INPUT_SIZE = 512 * 1024 * 1024
 
 
@@ -83,7 +85,7 @@ def call(preset: str, fork: str, name: str, operation: Operation, data: bytes = 
         ctypes.byref(size),
     )
     try:
-        if status == 2:
+        if status == ALLOCATION_FAILURE:
             raise MemoryError("Native SSZ allocation failed")
         result = ctypes.string_at(output, size.value)
         if status:

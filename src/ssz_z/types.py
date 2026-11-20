@@ -1,14 +1,19 @@
 """Consensus codecs loading wire documents into immutable SSZ-backed values."""
 
+from __future__ import annotations
+
 import copy
 import json
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
+from typing import TYPE_CHECKING
 
 from ._metadata import FORKS, PRESETS
 from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
-from ._schema import Schema
 from .value import NativeValue, _Layout, input_bytes
+
+if TYPE_CHECKING:
+    from ._schema import Schema
 
 
 @dataclass(frozen=True)
@@ -37,7 +42,7 @@ class SSZType:
         return _Layout(self._schema)
 
     @cached_property
-    def _signed_codec(self) -> "SSZType":
+    def _signed_codec(self) -> SSZType:
         target = get_type("Signed" + self.name, fork=self.fork, preset=self.preset)
         fields = target._schema.get("fields", {})
         if (

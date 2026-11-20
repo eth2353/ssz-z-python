@@ -207,7 +207,7 @@ def test_json_input_is_always_a_document():
 def test_ssz_mutations_are_rejected_or_round_trip(fork):
     codec = get_type("SignedBeaconBlock", fork=fork, preset="minimal")
     original = codec.default().to_ssz()
-    random_source = random.Random(20261016)
+    random_source = random.Random(20261016)  # noqa: S311 - Deterministic mutation testing, not cryptography.
     for _ in range(100):
         candidate = bytearray(original)
         for _ in range(random_source.randrange(1, 5)):
@@ -286,7 +286,7 @@ def test_concurrent_first_hash_in_fresh_process(preset):
     import subprocess
     import sys
 
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - Trusted local command and arguments.
         [
             sys.executable,
             "-c",

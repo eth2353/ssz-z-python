@@ -1,16 +1,21 @@
 """Immutable SSZ-backed values with Python-managed lifetimes."""
 
+from __future__ import annotations
+
 import hashlib
 import itertools
 import struct
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ._native import MAX_INPUT_SIZE, Operation, SSZError
-from ._schema import Schema
+
+SIGNATURE_SIZE = 96
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ._schema import Schema
     from .types import SSZType
 
 
@@ -25,7 +30,7 @@ def input_bytes(data: bytes | bytearray | memoryview) -> bytes:
 
 def _signature_bytes(signature: str | bytes | bytearray | memoryview) -> bytes:
     if isinstance(signature, str):
-        if not signature.startswith("0x") or len(signature) != 194:
+        if not signature.startswith("0x") or len(signature) != 2 + SIGNATURE_SIZE * 2:
             raise SSZError("Signature must contain exactly 96 bytes")
         try:
             signature = bytes.fromhex(signature[2:])
@@ -33,7 +38,7 @@ def _signature_bytes(signature: str | bytes | bytearray | memoryview) -> bytes:
             raise SSZError("Invalid signature hex") from error
     else:
         signature = input_bytes(signature)
-    if len(signature) != 96:
+    if len(signature) != SIGNATURE_SIZE:
         raise SSZError("Signature must contain exactly 96 bytes")
     return signature
 
@@ -41,7 +46,7 @@ def _signature_bytes(signature: str | bytes | bytearray | memoryview) -> bytes:
 class _Layout:
     """Precompute field positions once, rather than traverse values for projections."""
 
-    def __init__(self, schema: Schema):
+    def __init__(self, schema: Schema) -> None:
         self.size: int | None
         self.fields: dict[str, tuple[_Layout, int, int | None]]
         self.kind = schema["kind"]
@@ -74,7 +79,7 @@ class _Layout:
         else:
             self.size = None
 
-    def field(self, data: memoryview, name: str) -> tuple["_Layout", memoryview]:
+    def field(self, data: memoryview, name: str) -> tuple[_Layout, memoryview]:
         try:
             child, offset, next_offset = self.fields[name]
         except KeyError as error:
@@ -136,22 +141,22 @@ class NativeValue:
     lifetime; returned bytes and derived values are independent of the source.
     """
 
-    codec: "SSZType"
+    codec: SSZType
     _ssz: bytes = field(repr=False)
     _root: bytes | None = field(repr=False, compare=False)
 
-    def __init__(self, codec: "SSZType", data: bytes | bytearray | memoryview) -> None:
+    def __init__(self, codec: SSZType, data: bytes | bytearray | memoryview) -> None:
         data = input_bytes(data)
         codec._call(Operation.VALIDATE_SSZ, data)
         self._initialize(codec, data)
 
-    def _initialize(self, codec: "SSZType", data: bytes) -> None:
+    def _initialize(self, codec: SSZType, data: bytes) -> None:
         object.__setattr__(self, "codec", codec)
         object.__setattr__(self, "_ssz", data)
         object.__setattr__(self, "_root", None)
 
     @classmethod
-    def _from_validated(cls, codec: "SSZType", data: bytes) -> "NativeValue":
+    def _from_validated(cls, codec: SSZType, data: bytes) -> NativeValue:
         value = cls.__new__(cls)
         value._initialize(codec, data)
         return value
@@ -182,7 +187,7 @@ class NativeValue:
             layout, data = layout.field(data, part)
         return layout.scalar(data)
 
-    def sign(self, signature: str | bytes | bytearray | memoryview) -> "NativeValue":
+    def sign(self, signature: str | bytes | bytearray | memoryview) -> NativeValue:
         """Attach an existing BLS signature with one buffer allocation and no FFI calls.
 
         This wraps a signature; it does not perform BLS signing or verification.

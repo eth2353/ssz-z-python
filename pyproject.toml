@@ -65,20 +65,25 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["ALL"]
-# Documentation/exception wording and complexity remain editorial decisions.
-# COM812 conflicts with the formatter; strict mypy owns annotation checking.
-ignore = ["D", "EM", "TRY003", "COM812", "CPY001", "PLR", "C901", "ANN", "TC"]
+# Documentation and exception wording remain editorial decisions.
+# COM812 conflicts with the formatter.
+ignore = ["D", "EM", "TRY003", "COM812", "CPY001"]
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
 
 [tool.ruff.lint.per-file-ignores]
-# Internal codecs share private layouts; tests deliberately exercise internals,
-# malformed Unicode, and broad rejection cases. Tools execute trusted commands
-# and fetch checksummed archives; URL exceptions are documented at each call.
+# Internal codecs share private layouts and use Any for open-ended metadata.
+# Tests use literal expected values, assertions, fixtures, and private helpers.
+# Tools/tests/benchmarks are outside strict mypy coverage; annotations are optional.
+# Security and complexity exceptions are documented at individual call sites.
 "src/**" = ["SLF001"]
-"tests/**" = ["RUF001", "PT011", "S", "SLF", "ARG", "INP", "PLC0415"]
-"tools/**" = ["TRY004", "INP001", "S603", "S607", "T201"]
-"performance/**" = ["INP001", "S101", "S603", "S607", "T201", "SLF001"]
-"setup.py" = ["S603"]
-"main.py" = ["S101", "T201"]
+"src/ssz_z/beacon_api.py" = ["ANN401"]
+"tests/**" = ["ANN", "PLR2004", "PT011", "S101", "SLF", "ARG", "INP", "PLC0415"]
+"tools/**" = ["ANN", "INP001", "T201"]
+"performance/**" = ["ANN", "INP001", "S101", "T201", "SLF001"]
+"setup.py" = ["ANN"]
+"main.py" = ["ANN", "S101", "T201"]
 
 [tool.mypy]
 python_version = "3.12"

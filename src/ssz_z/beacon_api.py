@@ -1,16 +1,25 @@
 """Beacon API block operations, separate from generic SSZ values."""
 
+from __future__ import annotations
+
 import struct
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from types import MappingProxyType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from ._json import JSONValue, decode_metadata
+from ._json import decode_metadata
 from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
-from .types import SSZType, get_type
+from .types import get_type
 from .value import NativeValue, _signature_bytes, input_bytes
+
+if TYPE_CHECKING:
+    from ._json import JSONValue
+    from .types import SSZType
+
+BLOCK_PROJECTION_SIZE = 144
+UINT256_DECIMAL_DIGITS = 78
 
 
 @dataclass(frozen=True)
@@ -37,7 +46,7 @@ class BlockValue:
         projection = self._projection
         if projection is None:
             data = self.value.codec._call(Operation.BLOCK_PROJECTION, self.value.to_ssz())
-            if len(data) != 144:
+            if len(data) != BLOCK_PROJECTION_SIZE:
                 raise RuntimeError("Invalid block projection from native library")
             projection = (data[:112], data[112:])
             object.__setattr__(self, "_projection", projection)
@@ -75,12 +84,12 @@ class BlockValue:
 
     @property
     def slot(self) -> int:
-        return cast(int, self.value.field((*self._block_path(), "slot")))
+        return cast("int", self.value.field((*self._block_path(), "slot")))
 
     @property
     def builder_index(self) -> int:
         return cast(
-            int,
+            "int",
             self.value.field(
                 (
                     *self._block_path(),
@@ -92,7 +101,7 @@ class BlockValue:
             ),
         )
 
-    def sign(self, signature: str | bytes | bytearray | memoryview) -> "BlockValue":
+    def sign(self, signature: str | bytes | bytearray | memoryview) -> BlockValue:
         if self.value.codec.name != "BeaconBlockContents":
             signed = self.value.sign(signature)
         else:
@@ -256,7 +265,7 @@ class BlockResponse:
         object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
 
     @cached_property
-    def proposal(self) -> "BlockValue | GloasProposal":
+    def proposal(self) -> BlockValue | GloasProposal:
         return (
             GloasProposal(self.value)
             if self.value.codec.fork == "gloas"
@@ -271,7 +280,12 @@ def _metadata_value(key: str, value: JSONValue | MetadataValue) -> JSONValue | M
     ):
         raise SSZError(f"Invalid {key} metadata: expected a JSON boolean")
     if key in {"execution_payload_value", "consensus_block_value"}:
-        if isinstance(value, str) and value.isascii() and value.isdecimal() and len(value) <= 78:
+        if (
+            isinstance(value, str)
+            and value.isascii()
+            and value.isdecimal()
+            and len(value) <= UINT256_DECIMAL_DIGITS
+        ):
             value = int(value)
         if type(value) is not int or not 0 <= value < 1 << 256:
             raise SSZError(f"Invalid {key} metadata")

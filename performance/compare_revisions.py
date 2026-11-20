@@ -48,7 +48,7 @@ metadata = {
     "python": sys.version,
     "platform": platform.platform(),
     "before_revision": args.before_revision,
-    "after_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+    "after_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),  # noqa: S607 - Trusted local command and arguments.
     "corpus": str(args.corpus.resolve()),
     "rounds": args.rounds,
     "method": "Same process; alternate library order by block/pass; 12 warmups; "

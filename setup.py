@@ -37,7 +37,7 @@ class BuildPy(build_py):
         destination = package_root / "_native"
         with TemporaryDirectory(prefix="native-", dir=build_root) as temporary:
             prefix = Path(temporary)
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - Trusted local command and arguments.
                 [
                     sys.executable,
                     "-m",

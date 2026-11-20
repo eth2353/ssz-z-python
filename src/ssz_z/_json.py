@@ -27,6 +27,6 @@ def decode_metadata(data: bytes) -> MetadataEnvelope:
     """Decode only the small native metadata envelope, rejecting duplicate keys."""
     try:
         # The native REST_METADATA operation owns this envelope schema.
-        return cast(MetadataEnvelope, json.loads(data, object_pairs_hook=_unique_object))
+        return cast("MetadataEnvelope", json.loads(data, object_pairs_hook=_unique_object))
     except (ValueError, UnicodeError, RecursionError) as error:
         raise SSZError(f"Invalid JSON metadata: {error}") from error

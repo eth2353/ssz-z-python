@@ -11,6 +11,7 @@ import tarfile
 from pathlib import Path
 
 FORKS = {"electra", "fulu", "gloas"}
+VECTOR_PATH_PARTS = 8
 FILES = {"value.yaml", "roots.yaml", "serialized.ssz_snappy", "manifest.yaml"}
 
 
@@ -21,7 +22,7 @@ def extract(archive: Path, destination: Path, cases_per_suite: int = 0) -> None:
             parts = Path(member.name).parts
             if (
                 not member.isfile()
-                or len(parts) != 8
+                or len(parts) != VECTOR_PATH_PARTS
                 or parts[0] != "tests"
                 or parts[1] not in {"mainnet", "minimal"}
                 or parts[2] not in FORKS

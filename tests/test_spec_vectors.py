@@ -27,9 +27,9 @@ def test_official_ssz_static(path):
     (preset, fork, _, name, _, _, _) = path.parts[-7:]
     codec = get_type(name, fork=fork, preset=preset)
     serialized = snappy.decompress(path.read_bytes())
-    roots = yaml.load((path.parent / "roots.yaml").read_text(), Loader=YAML_LOADER)
+    roots = yaml.load((path.parent / "roots.yaml").read_text(), Loader=YAML_LOADER)  # noqa: S506 - YAML_LOADER is CSafeLoader or SafeLoader.
     expected_root = bytes.fromhex(roots["root"][2:])
-    expected_value = yaml.load((path.parent / "value.yaml").read_text(), Loader=YAML_LOADER)
+    expected_value = yaml.load((path.parent / "value.yaml").read_text(), Loader=YAML_LOADER)  # noqa: S506 - YAML_LOADER is CSafeLoader or SafeLoader.
     assert codec.hash_tree_root_from_ssz(serialized) == expected_root
     value = codec.load_ssz(serialized)
     assert value.to_ssz() is serialized

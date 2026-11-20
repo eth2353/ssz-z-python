@@ -154,7 +154,8 @@ def test_native_json_order_escapes_and_rest():
 
 
 @pytest.mark.parametrize(
-    "bad", ["", "0x", "0x0", "0xzz", "0x00 00", "00000000", "0X00000000", "0x００００００００"]
+    "bad",
+    ["", "0x", "0x0", "0xzz", "0x00 00", "00000000", "0X00000000", "0x００００００００"],  # noqa: RUF001 - Deliberate malformed Unicode input.
 )
 def test_hex_validation_all_paths(bad):
     codec = get_type("Bytes4", fork="primitive", preset="mainnet")

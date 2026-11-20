@@ -17,7 +17,7 @@ def test_specification_provenance(tmp_path):
     import subprocess
 
     def git(*args):
-        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
+        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()  # noqa: S603, S607 - Trusted local command and arguments.
 
     git("init")
     specs = tmp_path / "specs"

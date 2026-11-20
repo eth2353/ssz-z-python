@@ -117,7 +117,7 @@ import ssz_z
 metadata["ssz_z_import"] = ssz_z.__file__
 metadata["ssz-z-python"]["runtime_version"] = ssz_z.__version__
 metadata["ssz_z_source_base"] = (
-    subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(ssz_z.__file__).parents[2])
+    subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(ssz_z.__file__).parents[2])  # noqa: S607 - Trusted local command and arguments.
     .decode()
     .strip()
 )
@@ -185,7 +185,7 @@ with (args.output / "samples.csv").open("w", newline="") as stream:
         samples = defaultdict(list)
         print(f"{network}: preloaded and verified {len(cases)} blocks; fork={fork}", flush=True)
 
-        def run(case, order):
+        def run(case, order):  # noqa: PLR0915 - Keep benchmark timing and validation together.
             slot, json_input, ssz_input = case
             signed_value = json.loads(json_input)["data"]
             value = signed_value["message"]

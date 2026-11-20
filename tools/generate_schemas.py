@@ -35,7 +35,7 @@ class Generator:
             re.findall(r"pub const (\w+)", (lodestar_root / "src/preset/root.zig").read_text())
         )
 
-    def bound(self, node):
+    def bound(self, node):  # noqa: C901, PLR0911 - Schema AST dispatch mirrors supported type forms.
         if isinstance(node, ast.Constant) and isinstance(node.value, int):
             return str(node.value)
         if isinstance(node, ast.Name):
@@ -65,9 +65,9 @@ class Generator:
             return f"({left} {operator} {right})"
         raise ValueError(f"Unsupported bound: {ast.unparse(node)}")
 
-    def reference(self, node):
+    def reference(self, node):  # noqa: C901, PLR0912, PLR0915 - Schema AST dispatch mirrors supported type forms.
         if not isinstance(node, ast.Name):
-            raise ValueError(f"Unsupported type: {ast.unparse(node)}")
+            raise ValueError(f"Unsupported type: {ast.unparse(node)}")  # noqa: TRY004 - Unsupported AST form is a value error.
         name = node.id
         if name in self.fixed:
             return name
@@ -159,11 +159,12 @@ class Generator:
 def verify_spec_revision(spec_root, expected_commit):
     """Refuse to label unrelated or edited specification sources as the pin."""
     try:
-        actual = subprocess.check_output(
-            ["git", "-C", str(spec_root), "rev-parse", "HEAD"], text=True
+        actual = subprocess.check_output(  # noqa: S603 - Trusted local command and arguments.
+            ["git", "-C", str(spec_root), "rev-parse", "HEAD"],  # noqa: S607 - Resolve Git from PATH.
+            text=True,
         ).strip()
-        changes = subprocess.check_output(
-            [
+        changes = subprocess.check_output(  # noqa: S603 - Trusted local command and arguments.
+            [  # noqa: S607 - Trusted local command and arguments.
                 "git",
                 "-C",
                 str(spec_root),
@@ -183,7 +184,7 @@ def verify_spec_revision(spec_root, expected_commit):
         )
 
 
-def generate(spec_root, destination, lodestar_root=None):
+def generate(spec_root, destination, lodestar_root=None):  # noqa: C901, PLR0912 - Schema AST dispatch mirrors supported type forms.
     manifest = json.loads((ROOT / "UPSTREAM.json").read_text())
     if lodestar_root is None:
         lodestar_root = ROOT / "build/deps/lodestar" / manifest["lodestar"]["commit"]
