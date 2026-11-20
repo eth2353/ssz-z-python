@@ -23,7 +23,19 @@ jobs:
         with:
           activate-environment: true
           python-version: ${{ matrix.python }}
+      - name: Resolve newest vector release
+        id: vectors
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: echo "key=$(python -m tools.fetch_vectors --cache-key)" >> "$GITHUB_OUTPUT"
+      - name: Cache official vectors
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fixtures/releases
+          key: ssz-vectors-${{ steps.vectors.outputs.key }}-${{ hashFiles('tools/extract_vectors.py', 'tools/fetch_vectors.py') }}
       - name: Run pytest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           uv sync --locked
           uv run --locked pytest --cov=ssz_z --cov-report=term-missing
@@ -32,6 +44,8 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
       - name: Test installed wheel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           uv pip install --python .venv/bin/python --no-deps --reinstall dist/*.whl
           # Do not let uv replace the wheel with the project's editable installation.

@@ -1,7 +1,7 @@
 """Extract official SSZ static vectors, without trusting archive paths.
 
-Download mainnet.tar.gz/minimal.tar.gz from the consensus-specs release matching
-ssz_z.SPEC_VERSION. This tool never extracts links or unrelated archive members.
+This tool never extracts links or unrelated archive members. Normal test runs
+use tools.fetch_vectors to download the newest published release automatically.
 """
 
 import argparse

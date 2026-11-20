@@ -17,7 +17,7 @@
     "repository": "https://github.com/ethereum/consensus-specs",
     "tag": "v1.7.0-beta.4",
     "commit": "aa16bb4c156184e9548a997d53efaf2a228a6304",
-    "purpose": "Schemas in native/consensus.zig and official SSZ static vectors"
+    "purpose": "Schemas in native/consensus.zig; test vectors track the newest published release independently"
   },
   "beacon-APIs": {
     "repository": "https://github.com/ethereum/beacon-APIs",

@@ -1,4 +1,4 @@
-"""Official release vectors. Set SSZ_SPEC_TESTS to an extracted tests directory."""
+"""All official static vectors from the newest published release."""
 
 import json
 import os
@@ -8,18 +8,13 @@ import pytest
 import snappy
 import yaml
 
-from ssz_z import FORKS, get_type
+from ssz_z import get_type
 from tests.json_helpers import json_document, json_value
+from tools.fetch_vectors import fetch_vectors, vector_cases
 
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-ROOT = Path(os.environ.get("SSZ_SPEC_TESTS", "fixtures/tests"))
-BUNDLED = Path(__file__).parent / "vectors"
-CASES = sorted(
-    {
-        *BUNDLED.glob("*/*/ssz_static/*/*/*/serialized.ssz_snappy"),
-        *ROOT.glob("*/*/ssz_static/*/*/*/serialized.ssz_snappy"),
-    }
-)
+ROOT = Path(os.environ["SSZ_SPEC_TESTS"]) if "SSZ_SPEC_TESTS" in os.environ else fetch_vectors()
+CASES = vector_cases(ROOT)
 
 
 def _id(path):
@@ -30,8 +25,6 @@ def _id(path):
 @pytest.mark.parametrize("path", CASES, ids=_id)
 def test_official_ssz_static(path):
     (preset, fork, _, name, _, _, _) = path.parts[-7:]
-    if fork not in FORKS:
-        pytest.skip("Fork outside the requested range")
     codec = get_type(name, fork=fork, preset=preset)
     serialized = snappy.decompress(path.read_bytes())
     roots = yaml.load((path.parent / "roots.yaml").read_text(), Loader=YAML_LOADER)

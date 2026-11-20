@@ -1,6 +1,3 @@
-# Keep the official consensus test vectors byte-for-byte identical to upstream.
-exclude: ^tests/vectors/
-
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

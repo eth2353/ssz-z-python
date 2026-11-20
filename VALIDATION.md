@@ -15,27 +15,32 @@ uv run --locked python -m ziglang fmt --check build.zig native
 uv run --locked pre-commit run --all-files --show-diff-on-failure
 ```
 
-The normal suite includes bundled official SSZ vectors, default round trips for
-all exported codecs, scalar/collection boundaries, invalid SSZ and JSON,
-concurrent reads and cold-start hashes, block projections, proposal metadata,
-and signed publication wrappers. Official vectors compare independently
-published values, bytes, and roots. Gnosis has local preset-specific coverage;
-the Ethereum release does not publish gnosis vectors.
+Every normal test run checks GitHub for the newest published consensus-specs
+release, including prereleases, and runs all its SSZ static vectors for mainnet
+and minimal across the supported forks. Archives are checked against GitHub's
+SHA-256 digests; extracted vectors are cached under ignored `fixtures/releases`.
+The first download is large; subsequent runs reuse the extracted files. CI caches
+these files by release asset IDs. Missing suites and download failures fail the
+run instead of silently skipping vectors. Gnosis has local preset-specific tests.
 
-For the full official static suites, download `mainnet.tar.gz` and
-`minimal.tar.gz` from the consensus-specs release identified by the manifest.
-Extract them with:
+The vector release deliberately floats independently of the pinned schemas.
+Upstream schema changes may therefore fail tests until the bindings are updated.
+The selected release and archive digests are recorded in the cache's `release.json`.
+Set `GITHUB_TOKEN` to authenticate GitHub API requests if needed.
+
+To prefetch the newest vectors:
 
 ```sh
-python tools/extract_vectors.py /path/to/minimal.tar.gz fixtures
-python tools/extract_vectors.py /path/to/mainnet.tar.gz fixtures
-uv run --locked pytest -m spec
+python -m tools.fetch_vectors
 ```
 
-`--cases-per-suite 2` limits extraction to a sample. `SSZ_SPEC_TESTS=/path/to/tests`
-selects another extracted suite. Extraction records the archive digest; verify
-it against the release asset before relying on external vectors. The bundled
-vector manifest records the provenance of committed cases.
+For an offline rerun or reproduction of a specific release, set `SSZ_SPEC_TESTS`
+to its extracted `tests` directory. All supported fork/preset suites must exist;
+an empty or incomplete override is an error. This explicit override is the only
+way to bypass the latest-release check.
+
+Other tests cover default round trips for every exported codec, invalid SSZ and
+JSON, concurrency, block projections, proposal metadata, and signed wrappers.
 
 ## Regenerate schemas
 
@@ -52,7 +57,7 @@ git diff -- native/consensus.zig
 The generator verifies the specification revision and source cleanliness before
 writing output. It uses the cached Lodestar sources by default;
 `--lodestar-root /path/to/lodestar` overrides that location. Update upstream pins,
-regenerate, and run the matching official vectors together when upgrading.
+regenerate, and run the latest official vectors when upgrading.
 
 ## Packaging
 
