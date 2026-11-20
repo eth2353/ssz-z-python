@@ -43,6 +43,7 @@ build-constraint-dependencies = ["setuptools==82.0.1"]
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
+    { file = "src/ssz_z/**/*.py" },
     { file = "MANIFEST.in" },
     { file = "build.zig" },
     { file = "native/*.zig" },

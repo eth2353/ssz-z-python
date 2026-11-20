@@ -45,8 +45,8 @@ uv run --no-sync pre-commit run --all-files --show-diff-on-failure
 ```
 
 Run `uv sync --locked` again before using the library. Python-only edits are
-live in editable installations; native source/build-input changes trigger a
-rebuild. uv builds constrain the isolated setuptools version in `pyproject.toml`.
+live in editable installations. Python source and native build-input changes
+invalidate uv’s build cache, including for non-editable installations. uv builds constrain the isolated setuptools version in `pyproject.toml`.
 
 ## Codecs and immutable values
 
