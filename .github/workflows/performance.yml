@@ -1,0 +1,45 @@
+name: Performance
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: current
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+          path: baseline
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+      - name: Build both revisions
+        run: |
+          cd baseline
+          uv sync --locked
+          cd ../current
+          uv sync --locked
+      - name: Measure baseline and current
+        run: |
+          baseline/.venv/bin/python current/performance/regression.py --fixture current/performance/fixtures/fulu --output baseline.json
+          current/.venv/bin/python current/performance/regression.py --fixture current/performance/fixtures/fulu --output current.json --baseline baseline.json
+      - name: Record measurements
+        if: always()
+        run: |
+          for result in baseline.json current.json; do
+            if test -f "$result"; then
+              echo "### $result" >> "$GITHUB_STEP_SUMMARY"
+              echo '```json' >> "$GITHUB_STEP_SUMMARY"
+              cat "$result" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
