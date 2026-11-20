@@ -24,7 +24,7 @@ def fetch(name, entry, cache_root):
         temporary = Path(temporary_name)
         download = temporary / "source.tar.gz"
         with (
-            urllib.request.urlopen(entry["archive_url"], timeout=60) as response,
+            urllib.request.urlopen(entry["archive_url"], timeout=60) as response,  # noqa: S310 - Checksummed archive; tests use file URLs.
             download.open("wb") as output,
         ):
             shutil.copyfileobj(response, output)

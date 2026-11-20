@@ -72,10 +72,10 @@ ignore = ["D", "EM", "TRY003", "COM812", "CPY001", "PLR", "C901", "ANN", "TC"]
 [tool.ruff.lint.per-file-ignores]
 # Internal codecs share private layouts; tests deliberately exercise internals,
 # malformed Unicode, and broad rejection cases. Tools execute trusted commands
-# and fetch checksummed archives (file URLs are used in downloader tests).
+# and fetch checksummed archives; URL exceptions are documented at each call.
 "src/**" = ["SLF001"]
 "tests/**" = ["RUF001", "PT011", "S", "SLF", "ARG", "INP", "PLC0415"]
-"tools/**" = ["TRY004", "INP001", "S603", "S607", "S310", "T201"]
+"tools/**" = ["TRY004", "INP001", "S603", "S607", "T201"]
 "performance/**" = ["INP001", "S101", "S603", "S607", "T201", "SLF001"]
 "setup.py" = ["S603"]
 "main.py" = ["S101", "T201"]

@@ -78,7 +78,7 @@ def fetch_vectors(cache_root=ROOT / "fixtures" / "releases"):
             archive = temporary / asset["name"]
             print(f"Fetching {release['tag_name']} {asset['name']}", flush=True)
             with (
-                urllib.request.urlopen(asset["browser_download_url"], timeout=60) as source,
+                urllib.request.urlopen(asset["browser_download_url"], timeout=60) as source,  # noqa: S310 - Checksummed archive; tests use file URLs.
                 archive.open("wb") as output,
             ):
                 shutil.copyfileobj(source, output)
