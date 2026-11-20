@@ -6,6 +6,38 @@ on:
 permissions:
   contents: read
 jobs:
+  schemas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read specification pin
+        id: spec
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          pin = json.loads(Path("UPSTREAM.json").read_text())["consensus-specs"]["commit"]
+          print(f"commit={pin}")
+          PY
+      - name: Check out pinned specifications
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ethereum/consensus-specs
+          ref: ${{ steps.spec.outputs.commit }}
+          path: build/consensus-specs
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Verify generated schemas
+        run: |
+          uv sync --locked --only-group dev
+          uv run --no-sync python tools/fetch_native.py
+          uv run --no-sync python tools/generate_schemas.py build/consensus-specs native/consensus.zig
+          uv run --no-sync python -m ziglang fmt native/consensus.zig
+          git diff --exit-code -- native/consensus.zig
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

@@ -59,6 +59,10 @@ writing output. It uses the cached Lodestar sources by default;
 `--lodestar-root /path/to/lodestar` overrides that location. Update upstream pins,
 regenerate, and run the latest official vectors when upgrading.
 
+CI also checks out the exact specification commit, regenerates and formats
+`native/consensus.zig`, and fails if it differs from the committed file. This job
+installs only development tools and does not compile the bindings.
+
 ## Packaging
 
 CI runs on Linux AMD64 and ARM64 using the Python versions in
