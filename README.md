@@ -13,14 +13,15 @@ and minimal.
 
 ## Installation and development
 
-Python 3.12 or newer is required. Install from source in your target environment:
+Linux AMD64 or ARM64 and Python 3.12 or newer are required. Install from source
+in your target environment:
 
 ```sh
 uv pip install .
 ```
 
 Source builds install the pinned Zig compiler through the build requirements,
-then compile all presets with `ReleaseSafe` and a baseline CPU target. Linux x86
+then compile all presets with `ReleaseSafe` and a baseline CPU target. AMD64
 also requires GNU binutils for the upstream assembly backend. No system Zig,
 Node.js, or Rust is required. Builds download checksummed native archives over
 HTTPS and cache their sources under `build/deps`. Populate that cache ahead of
@@ -185,4 +186,4 @@ selects the dependency-fetch interpreter. Python packaging builds all presets
 into the package independently of `zig-out`.
 
 See [VALIDATION.md](VALIDATION.md) for vectors and schema regeneration, and the
-[performance report](performance/report.md) for historical sampled measurements.
+[benchmark instructions](performance/report.md) for performance measurements.

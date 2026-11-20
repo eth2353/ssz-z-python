@@ -1,6 +1,7 @@
 """Small, ownership-safe ctypes boundary. Importing this module does not load a library."""
 
 import ctypes
+import platform
 import sys
 from enum import IntEnum
 from functools import lru_cache
@@ -34,12 +35,9 @@ class SSZError(ValueError):
 def _library(preset: str) -> ctypes.CDLL:
     if preset not in PRESETS:
         raise ValueError(f"Unknown preset {preset!r}; choose from {PRESETS}")
-    filename = (
-        f"ssz_z_{preset}.dll"
-        if sys.platform == "win32"
-        else f"libssz_z_{preset}.{'dylib' if sys.platform == 'darwin' else 'so'}"
-    )
-    path = Path(__file__).parent / "_native" / filename
+    if sys.platform != "linux" or platform.machine().lower() not in {"x86_64", "aarch64"}:
+        raise ImportError("ssz-z-python supports Linux AMD64 and ARM64 only")
+    path = Path(__file__).parent / "_native" / f"libssz_z_{preset}.so"
     if not path.is_file():
         raise ImportError(
             "Native SSZ libraries are missing. Install with `pip install .` "

@@ -137,13 +137,13 @@ metadata["ssz_z_source_files_sha256"] = {
 metadata["ssz_z_native_files_sha256"] = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
     for p in sorted(Path(ssz_z.__file__).parent.glob("_native/*"))
-    if p.suffix in {".dylib", ".so", ".dll"}
+    if p.suffix == ".so"
 }
 spy_root = Path(spy_ssz.__file__).parent
 metadata["spy_files_sha256"] = {
     str(p.relative_to(spy_root)): hashlib.sha256(p.read_bytes()).hexdigest()
     for p in sorted(spy_root.rglob("*"))
-    if p.is_file() and p.suffix in {".py", ".so", ".dylib", ".dll"}
+    if p.is_file() and p.suffix in {".py", ".so"}
 }
 assert Path(spy_ssz.__file__).resolve().is_relative_to(args.spy_site_packages.resolve())
 assert (

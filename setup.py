@@ -2,6 +2,7 @@
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,8 @@ class NativeDistribution(Distribution):
 
 class BuildPy(build_py):
     def run(self):
+        if sys.platform != "linux" or platform.machine().lower() not in {"x86_64", "aarch64"}:
+            raise RuntimeError("ssz-z-python supports Linux AMD64 and ARM64 only")
         super().run()
         build_root = ROOT / "build"
         build_root.mkdir(exist_ok=True)
@@ -53,12 +56,7 @@ class BuildPy(build_py):
             )
             libraries = []
             for preset in UPSTREAM["bindings"]["presets"]:
-                filename = (
-                    f"ssz_z_{preset}.dll"
-                    if sys.platform == "win32"
-                    else f"libssz_z_{preset}.{'dylib' if sys.platform == 'darwin' else 'so'}"
-                )
-                library = prefix / ("bin" if sys.platform == "win32" else "lib") / filename
+                library = prefix / "lib" / f"libssz_z_{preset}.so"
                 if not library.is_file():
                     raise RuntimeError(f"Missing native library: {library}")
                 libraries.append(library)

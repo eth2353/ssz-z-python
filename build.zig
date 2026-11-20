@@ -1,12 +1,10 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
-    var target_query = b.standardTargetOptionsQueryOnly(.{});
-    if (builtin.os.tag == .macos and target_query.os_tag == null) {
-        target_query.os_version_min = .{ .semver = .{ .major = 11, .minor = 0, .patch = 0 } };
+    const target = b.standardTargetOptions(.{});
+    if (target.result.os.tag != .linux or (target.result.cpu.arch != .x86_64 and target.result.cpu.arch != .aarch64)) {
+        @panic("ssz-z-python supports Linux AMD64 and ARM64 only");
     }
-    const target = b.resolveTargetQuery(target_query);
     const optimize = b.standardOptimizeOption(.{});
     const selected = b.option([]const u8, "preset", "Build one preset instead of all three");
     const python = b.option([]const u8, "python", "Python interpreter used to fetch native sources") orelse "python3";
@@ -22,14 +20,13 @@ pub fn build(b: *std.Build) void {
     });
     hash.step.dependOn(&fetch.step);
     const arch = target.result.cpu.arch;
-    const os = target.result.os.tag;
-    if (arch.isArm() or arch.isAARCH64()) {
+    if (arch == .aarch64) {
         hash.root_module.addCSourceFiles(.{
             .root = hashtree_c.path(b, "src"),
             .files = &.{ "sha256_armv8_neon_x4.S", "sha256_armv8_neon_x1.S", "sha256_armv8_crypto.S" },
             .flags = &.{ "-g", "-fpic" },
         });
-    } else if (arch.isX86() and os != .macos and !(os == .windows and target.result.abi == .msvc)) {
+    } else {
         hash.root_module.addCSourceFiles(.{
             .root = hashtree_c.path(b, "src"),
             .files = &.{ "sha256_shani.S", "sha256_avx_x16.S", "sha256_avx_x8.S", "sha256_avx_x4.S", "sha256_avx_x1.S", "sha256_sse_x1.S" },
