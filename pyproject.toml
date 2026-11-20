@@ -23,7 +23,7 @@ classifiers = [
 dev = [
     "mypy>=1",
     "pre-commit>=4",
-    "pytest>=8",
+    "pytest>=9",
     "pytest-cov>=6",
     "python-snappy>=0.7",
     "pyyaml>=6",
@@ -54,6 +54,8 @@ cache-keys = [
 ]
 
 [tool.pytest.ini_options]
+strict = true
+filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = ["spec: official consensus SSZ static vectors"]

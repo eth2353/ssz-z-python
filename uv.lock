@@ -736,7 +736,7 @@ dev = [
 dev = [
     { name = "mypy", specifier = ">=1" },
     { name = "pre-commit", specifier = ">=4" },
-    { name = "pytest", specifier = ">=8" },
+    { name = "pytest", specifier = ">=9" },
     { name = "pytest-cov", specifier = ">=6" },
     { name = "python-snappy", specifier = ">=0.7" },
     { name = "pyyaml", specifier = ">=6" },
