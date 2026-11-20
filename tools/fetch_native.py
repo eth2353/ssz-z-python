@@ -20,12 +20,14 @@ def fetch(name, entry, cache_root):
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
-        temporary = Path(temporary)
+    with tempfile.TemporaryDirectory(dir=destination.parent) as temporary_name:
+        temporary = Path(temporary_name)
         download = temporary / "source.tar.gz"
-        with urllib.request.urlopen(entry["archive_url"], timeout=60) as response:
-            with download.open("wb") as output:
-                shutil.copyfileobj(response, output)
+        with (
+            urllib.request.urlopen(entry["archive_url"], timeout=60) as response,
+            download.open("wb") as output,
+        ):
+            shutil.copyfileobj(response, output)
         with download.open("rb") as source:
             actual = hashlib.file_digest(source, "sha256").hexdigest()
         if actual != expected:

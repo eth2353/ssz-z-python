@@ -296,7 +296,7 @@ def test_native_failure_after_partial_allocation():
 
 
 @pytest.mark.parametrize(
-    "name,value,expected_json",
+    ("name", "value", "expected_json"),
     [
         ("Transaction", b"\x01\xff", "0x01ff"),
         ("BlockAccessList", b"\x01\xff", "0x01ff"),

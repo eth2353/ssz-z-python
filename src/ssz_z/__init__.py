@@ -13,10 +13,10 @@ __all__ = [
     "PRESETS",
     "SPEC_VERSION",
     "UPSTREAM_COMMIT",
+    "NativeValue",
     "SSZError",
     "SSZType",
     "Schema",
-    "NativeValue",
     "get_type",
     "list_types",
 ]

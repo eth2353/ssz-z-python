@@ -171,9 +171,9 @@ def test_fulu_proof_limit_differs_from_electra(preset):
 @pytest.mark.parametrize("fork", FORKS)
 def test_contents_require_contents_fields_and_blinded_payload_header(fork):
     codec = get_type("BeaconBlockContents", fork=fork, preset="minimal")
-    with pytest.raises(SSZError, match="MissingField|UnknownField"):
+    with pytest.raises(SSZError, match=r"MissingField|UnknownField"):
         codec.load_json(json_document({"block": populated_block(fork, "minimal")})).to_ssz()
-    with pytest.raises(SSZError, match="MissingField|UnknownField"):
+    with pytest.raises(SSZError, match=r"MissingField|UnknownField"):
         get_type("BlindedBeaconBlock", fork=fork, preset="minimal").load_json(
             json_document(populated_block(fork, "minimal"))
         ).to_ssz()

@@ -1,6 +1,7 @@
 """Immutable SSZ-backed values with Python-managed lifetimes."""
 
 import hashlib
+import itertools
 import struct
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -65,7 +66,7 @@ class _Layout:
                 if child.size is None:
                     variable.append(name)
                 offset += 4 if child.size is None else child.size
-            for name, following in zip(variable, variable[1:], strict=False):
+            for name, following in itertools.pairwise(variable):
                 child, start, _ = self.fields[name]
                 self.fields[name] = (child, start, self.fields[following][1])
             self.fixed_section_size = offset

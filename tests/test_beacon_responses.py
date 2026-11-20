@@ -65,7 +65,8 @@ def test_invalid_proposal_metadata(metadata):
 
 
 @pytest.mark.parametrize(
-    "fork,flag", [("fulu", "execution_payload_blinded"), ("gloas", "execution_payload_included")]
+    ("fork", "flag"),
+    [("fulu", "execution_payload_blinded"), ("gloas", "execution_payload_included")],
 )
 @pytest.mark.parametrize(
     "token", ["0", "1", "0.0", "1.0", '"true"', '"false"', "True", "False", "null"]
@@ -83,7 +84,7 @@ def test_headers_cannot_repair_invalid_json_booleans(fork, flag, token, header):
 
 @pytest.mark.parametrize("value", ["True", "False", "TRUE", "FALSE", "1", "0", " true", "false "])
 def test_boolean_headers_require_lowercase_literals(value):
-    with pytest.raises(SSZError, match="Invalid.*header"):
+    with pytest.raises(SSZError, match=r"Invalid.*header"):
         load_proposal_ssz(
             b"",
             headers={"eth-consensus-version": "fulu", "eth-execution-payload-blinded": value},

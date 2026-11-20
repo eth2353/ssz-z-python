@@ -68,8 +68,8 @@ def fetch_vectors(cache_root=ROOT / "fixtures" / "releases"):
         return destination / "tests"
 
     cache_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=cache_root) as temporary:
-        temporary = Path(temporary)
+    with tempfile.TemporaryDirectory(dir=cache_root) as temporary_name:
+        temporary = Path(temporary_name)
         extracted = temporary / "extracted"
         for asset in selected:
             digest = asset["digest"]
@@ -77,9 +77,11 @@ def fetch_vectors(cache_root=ROOT / "fixtures" / "releases"):
                 raise ValueError(f"Missing SHA-256 digest for {asset['name']}")
             archive = temporary / asset["name"]
             print(f"Fetching {release['tag_name']} {asset['name']}", flush=True)
-            with urllib.request.urlopen(asset["browser_download_url"], timeout=60) as source:
-                with archive.open("wb") as output:
-                    shutil.copyfileobj(source, output)
+            with (
+                urllib.request.urlopen(asset["browser_download_url"], timeout=60) as source,
+                archive.open("wb") as output,
+            ):
+                shutil.copyfileobj(source, output)
             with archive.open("rb") as source:
                 actual = hashlib.file_digest(source, "sha256").hexdigest()
             if digest != f"sha256:{actual}":

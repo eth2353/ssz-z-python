@@ -5,7 +5,7 @@ from typing import TypedDict, cast
 
 from ._native import SSZError
 
-type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+type JSONValue = bool | int | float | str | list[JSONValue] | dict[str, JSONValue] | None
 
 
 class MetadataEnvelope(TypedDict):

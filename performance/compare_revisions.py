@@ -72,7 +72,8 @@ for path in json_paths:
     js = path.read_bytes()
     ss = (args.corpus / "ssz" / (path.stem + ".ssz")).read_bytes()
     doc = json.loads(js)
-    assert doc["version"] == "fulu" and doc["data"]["message"]["slot"] == path.stem
+    assert doc["version"] == "fulu"
+    assert doc["data"]["message"]["slot"] == path.stem
     unsigned_json = json.dumps(doc["data"]["message"], separators=(",", ":")).encode()
     proposal_json = json.dumps(
         {"data": {"block": doc["data"]["message"], "kzg_proofs": [], "blobs": []}},

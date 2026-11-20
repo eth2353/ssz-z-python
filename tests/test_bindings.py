@@ -24,13 +24,13 @@ def test_requested_forks_and_presets(preset, fork):
         "BlockRoots",
         "StateRoots",
     } <= set(names)
-    for name in {
+    for name in (
         "BlobKzgCommitments",
         "SignedBLSToExecutionChanges",
         "HistoricalBlockRoots",
         "HistoricalStateRoots",
         "PtcWindow",
-    }:
+    ):
         assert name not in names
         with pytest.raises(ValueError, match="Unknown SSZ type"):
             get_type(name, fork=fork, preset=preset)
@@ -244,7 +244,7 @@ def test_object_conversion_api_is_removed():
         assert not hasattr(value, name)
 
 
-@pytest.mark.parametrize("text,expected", [(b"true", b"\x01"), (b"false", b"\x00")])
+@pytest.mark.parametrize(("text", "expected"), [(b"true", b"\x01"), (b"false", b"\x00")])
 def test_json_boolean_literals(text, expected):
     value = get_type("Boolean", fork="primitive", preset="mainnet").load_json(text)
     assert value.to_ssz() == expected

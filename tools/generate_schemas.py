@@ -202,7 +202,7 @@ def generate(spec_root, destination, lodestar_root=None):
         if not paths:
             raise ValueError(f"No specification Markdown found for {fork}: {spec_root}")
         for path in paths:
-            for block in re.findall(r"```python\n(.*?)```", path.read_text(), re.S):
+            for block in re.findall(r"```python\n(.*?)```", path.read_text(), re.DOTALL):
                 for node in ast.parse(block).body:
                     if isinstance(node, ast.ClassDef) and len(node.bases) == 1:
                         base = node.bases[0]

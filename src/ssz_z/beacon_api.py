@@ -233,7 +233,7 @@ _HEADER_FIELDS = {
 
 
 type MetadataValue = (
-    None | bool | int | float | str | tuple[MetadataValue, ...] | Mapping[str, MetadataValue]
+    bool | int | float | str | tuple[MetadataValue, ...] | Mapping[str, MetadataValue] | None
 )
 
 
@@ -265,9 +265,11 @@ class BlockResponse:
 
 
 def _metadata_value(key: str, value: JSONValue | MetadataValue) -> JSONValue | MetadataValue:
-    if key in {"execution_payload_blinded", "execution_payload_included"}:
-        if type(value) is not bool:
-            raise SSZError(f"Invalid {key} metadata: expected a JSON boolean")
+    if (
+        key in {"execution_payload_blinded", "execution_payload_included"}
+        and type(value) is not bool
+    ):
+        raise SSZError(f"Invalid {key} metadata: expected a JSON boolean")
     if key in {"execution_payload_value", "consensus_block_value"}:
         if isinstance(value, str) and value.isascii() and value.isdecimal() and len(value) <= 78:
             value = int(value)
@@ -298,9 +300,8 @@ def _header_metadata(headers: Mapping[str, str] | None) -> dict[str, Any]:
     flag = "execution_payload_included" if fork == "gloas" else "execution_payload_blinded"
     if type(metadata.get(flag)) is not bool:
         raise SSZError(f"Missing or invalid {flag} metadata")
-    if fork == "gloas" and "execution_payload_blinded" in metadata:
-        if metadata["execution_payload_blinded"] is not False:
-            raise SSZError("Gloas proposals cannot use blinded block metadata")
+    if fork == "gloas" and metadata.get("execution_payload_blinded", False) is not False:
+        raise SSZError("Gloas proposals cannot use blinded block metadata")
     return metadata
 
 
