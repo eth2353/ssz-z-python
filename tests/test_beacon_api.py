@@ -177,3 +177,30 @@ def test_contents_require_contents_fields_and_blinded_payload_header(fork):
         get_type("BlindedBeaconBlock", fork=fork, preset="minimal").load_json(
             json_document(populated_block(fork, "minimal"))
         ).to_ssz()
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+@pytest.mark.parametrize("fork", FORKS)
+def test_lodestar_blinded_schemas_agree_with_generated_consensus(fork, preset):
+    def schema(name):
+        return get_type(name, fork=fork, preset=preset).schema
+
+    body = schema("BeaconBlockBody")
+    assert "execution_payload" in body["fields"]
+    body["fields"] = {
+        "execution_payload_header" if name == "execution_payload" else name: (
+            schema("ExecutionPayloadHeader") if name == "execution_payload" else child
+        )
+        for name, child in body["fields"].items()
+    }
+    block = schema("BeaconBlock")
+    block["fields"]["body"] = body
+    signed = schema("SignedBeaconBlock")
+    signed["fields"]["message"] = block
+    for name, expected in (
+        ("BlindedBeaconBlockBody", body),
+        ("BlindedBeaconBlock", block),
+        ("SignedBlindedBeaconBlock", signed),
+    ):
+        # JSON comparison preserves field order recursively; dict equality does not.
+        assert json.dumps(schema(name)) == json.dumps(expected), name

@@ -62,6 +62,9 @@ regenerate, and run the latest official vectors when upgrading.
 CI also checks out the exact specification commit, regenerates and formats
 `native/consensus.zig`, and fails if it differs from the committed file. This job
 installs only development tools and does not compile the bindings.
+The normal native test suite also compares Lodestar's blinded blocks against the
+generated consensus schemas, checking field order and the payload/header
+substitution.
 
 ## Packaging
 
