@@ -178,12 +178,13 @@ ABI versions. Build provenance is copied into the installed package, so runtime
 metadata never depends on a source checkout.
 
 ```sh
-uv build
+uv build --wheel
 uv run --locked python -m ziglang build -Doptimize=ReleaseSafe -Dcpu=baseline
 uv run --locked python -m ziglang fmt --check build.zig native
 ```
 
-`uv build` builds an sdist and then a local platform wheel from that sdist.
+`uv build --wheel` builds a local platform wheel directly from the checkout.
+Source distributions are not part of the supported workflow yet.
 `-Dpreset=minimal` selects one preset for direct Zig builds; `-Dpython=/path/to/python`
 selects the dependency-fetch interpreter. Python packaging builds all presets
 into the package independently of `zig-out`.

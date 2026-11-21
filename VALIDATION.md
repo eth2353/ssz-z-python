@@ -70,8 +70,8 @@ substitution.
 
 CI runs on Linux AMD64 and ARM64 using the Python versions in
 [the workflow](.github/workflows/test.yml). It tests an editable source build,
-builds an sdist and a local wheel, and tests the installed wheel. These are
-local build artifacts, not portable public wheels. Third-party notices ship
-with distributions; dependency sources and prebuilt binaries are excluded from
-the sdist. Record validation results from the current run rather than treating
+builds a local wheel directly from the checkout, and tests the installed wheel.
+These are local build artifacts, not portable public wheels. Third-party notices ship
+with wheels. Source distributions are not part of the supported workflow yet.
+Record validation results from the current run rather than treating
 historical test counts as coverage guarantees.

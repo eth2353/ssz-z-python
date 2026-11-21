@@ -73,8 +73,8 @@ jobs:
           uv run --locked pytest --cov=ssz_z --cov-report=term-missing
       - name: Check public types
         run: uv run --locked mypy
-      - name: Build sdist and wheel
-        run: uv build
+      - name: Build local wheel
+        run: uv build --wheel
       - name: Test installed wheel
         env:
           GITHUB_TOKEN: ${{ github.token }}
