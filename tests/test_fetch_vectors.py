@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import tarfile
+from unittest.mock import Mock
 
 import pytest
 
@@ -35,6 +36,8 @@ def release(tmp_path, monkeypatch):
 
 
 def test_download_cache_and_asset_replacement(tmp_path, monkeypatch, release):
+    lookup = Mock(return_value=release)
+    monkeypatch.setattr(vectors, "latest_release", lookup)
     cache = tmp_path / "cache"
     root = vectors.fetch_vectors(cache)
     assert len(vectors.vector_cases(root)) == 6
@@ -47,6 +50,7 @@ def test_download_cache_and_asset_replacement(tmp_path, monkeypatch, release):
         assert vectors.fetch_vectors(cache) == root
     release["assets"][0]["id"] = 99
     assert vectors.fetch_vectors(cache) != root
+    assert lookup.call_count == 3
 
 
 def test_checksum_failure_never_publishes_cache(tmp_path, release):
