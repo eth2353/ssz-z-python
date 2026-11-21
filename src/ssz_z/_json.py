@@ -3,7 +3,8 @@
 import json
 from typing import TypedDict, cast
 
-from ._native import SSZError
+from ._native import MAX_INPUT_SIZE, SSZError
+from .value import input_bytes
 
 type JSONValue = bool | int | float | str | list[JSONValue] | dict[str, JSONValue] | None
 
@@ -12,6 +13,15 @@ class MetadataEnvelope(TypedDict):
     metadata: dict[str, JSONValue]
     data_start: int
     data_end: int
+
+
+def input_json(text: str | bytes | bytearray | memoryview) -> bytes:
+    """Snapshot a UTF-8 JSON document and enforce the encoded input limit."""
+    if isinstance(text, str):
+        if len(text) > MAX_INPUT_SIZE:
+            raise SSZError("JSON input too large")
+        text = text.encode("utf-8")
+    return input_bytes(text)
 
 
 def _unique_object(pairs: list[tuple[str, JSONValue]]) -> dict[str, JSONValue]:

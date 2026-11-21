@@ -9,10 +9,10 @@ from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
-from ._json import decode_metadata
-from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
+from ._json import decode_metadata, input_json
+from ._native import Operation, SSZError, call
 from .types import get_type
-from .value import NativeValue, _signature_bytes, input_bytes
+from .value import NativeValue, _signature_bytes
 
 if TYPE_CHECKING:
     from ._json import JSONValue
@@ -334,11 +334,7 @@ def load_proposal_json(
 ) -> BlockResponse:
     """Select a proposal codec from required headers, checking JSON metadata against them."""
     metadata = _header_metadata(headers)
-    if isinstance(text, str):
-        if len(text) > MAX_INPUT_SIZE:
-            raise SSZError("JSON input too large")
-        text = text.encode("utf-8")
-    text = input_bytes(text)
+    text = input_json(text)
     envelope = decode_metadata(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
     for key, raw_value in envelope["metadata"].items():
         value = _metadata_value(key, raw_value)

@@ -8,8 +8,9 @@ from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from typing import TYPE_CHECKING
 
+from ._json import input_json
 from ._metadata import FORKS, PRESETS
-from ._native import MAX_INPUT_SIZE, Operation, SSZError, call
+from ._native import Operation, call
 from .value import NativeValue, _Layout, input_bytes
 
 if TYPE_CHECKING:
@@ -69,12 +70,7 @@ class SSZType:
         Accepts UTF-8 bytes or text, never decoded Python objects. Scalars must
         also be complete JSON documents (for example, a quoted hex string).
         """
-        if isinstance(text, str):
-            if len(text) > MAX_INPUT_SIZE:
-                raise SSZError("JSON input too large")
-            text = text.encode("utf-8")
-        else:
-            text = input_bytes(text)
+        text = input_json(text)
         data = self._call(Operation.REST_JSON_TO_SSZ if wrapped else Operation.JSON_TO_SSZ, text)
         return NativeValue._from_validated(self, data)
 
