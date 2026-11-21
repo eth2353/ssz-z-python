@@ -41,17 +41,8 @@ ssz_z = ["py.typed"]
 required-version = "~=0.13.5"
 exclude-newer = "7 days"
 build-constraint-dependencies = ["setuptools==82.0.1"]
-cache-keys = [
-    { file = "pyproject.toml" },
-    { file = "setup.py" },
-    { file = "src/ssz_z/**/*.py" },
-    { file = "MANIFEST.in" },
-    { file = "build.zig" },
-    { file = "native/*.zig" },
-    { file = "native/*.h" },
-    { file = "UPSTREAM.json" },
-    { file = "tools/fetch_native.py" },
-]
+# Let Zig track native inputs instead of duplicating its dependency graph here.
+reinstall-package = ["ssz-z-python"]
 
 [tool.pytest.ini_options]
 strict = true

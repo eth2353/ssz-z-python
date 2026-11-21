@@ -46,8 +46,11 @@ uv run --no-sync pre-commit run --all-files --show-diff-on-failure
 ```
 
 Run `uv sync --locked` again before using the library. Python-only edits are
-live in editable installations. Python source and native build-input changes
-invalidate uv’s build cache, including for non-editable installations. uv builds constrain the isolated setuptools version in `pyproject.toml`.
+live in editable installations. In this checkout, uv always rebuilds/reinstalls
+the project when syncing, so there is no package-input cache-key list to maintain.
+Zig reuses unchanged compilation outputs. Use
+`uv run --no-sync` to skip the build/install step when desired. uv builds constrain
+the isolated setuptools version in `pyproject.toml`.
 
 ## Codecs and immutable values
 
