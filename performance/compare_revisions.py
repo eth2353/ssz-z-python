@@ -62,7 +62,7 @@ for label, (module, _) in libs.items():
     metadata["source_hashes"][label] = {
         str(p.relative_to(package)): hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted(package.rglob("*"))
-        if p.is_file() and p.suffix in {".py", ".so", ".json"}
+        if p.is_file() and p.suffix in {".py", ".so", ".dylib", ".json"}
     }
 metadata["harness_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 cases = []

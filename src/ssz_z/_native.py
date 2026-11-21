@@ -37,9 +37,14 @@ class SSZError(ValueError):
 def _library(preset: str) -> ctypes.CDLL:
     if preset not in PRESETS:
         raise ValueError(f"Unknown preset {preset!r}; choose from {PRESETS}")
-    if sys.platform != "linux" or platform.machine().lower() not in {"x86_64", "aarch64"}:
-        raise ImportError("ssz-z-python supports Linux AMD64 and ARM64 only")
-    path = Path(__file__).parent / "_native" / f"libssz_z_{preset}.so"
+    machine = platform.machine().lower()
+    if sys.platform == "darwin" and machine in {"x86_64", "arm64"}:
+        suffix = ".dylib"
+    elif sys.platform == "linux" and machine in {"x86_64", "aarch64"}:
+        suffix = ".so"
+    else:
+        raise ImportError("ssz-z-python supports Linux and macOS on x86_64 and ARM64 only")
+    path = Path(__file__).parent / "_native" / f"libssz_z_{preset}{suffix}"
     if not path.is_file():
         raise ImportError(
             "Native SSZ libraries are missing. Install with `pip install .` "

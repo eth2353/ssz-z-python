@@ -15,6 +15,8 @@ from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).parent.resolve()
 UPSTREAM = json.loads((ROOT / "UPSTREAM.json").read_text())
+MACOS_VERSION = "12.0"
+MACOS_ARCHITECTURES = {"arm64": "aarch64", "x86_64": "x86_64"}
 
 
 class NativeDistribution(Distribution):
@@ -24,8 +26,15 @@ class NativeDistribution(Distribution):
 
 class BuildPy(build_py):
     def run(self):
-        if sys.platform != "linux" or platform.machine().lower() not in {"x86_64", "aarch64"}:
-            raise RuntimeError("ssz-z-python supports Linux AMD64 and ARM64 only")
+        machine = platform.machine().lower()
+        if sys.platform == "darwin" and machine in MACOS_ARCHITECTURES:
+            target_options = [f"-Dtarget={MACOS_ARCHITECTURES[machine]}-macos.{MACOS_VERSION}"]
+            suffix = ".dylib"
+        elif sys.platform == "linux" and machine in {"x86_64", "aarch64"}:
+            target_options = []
+            suffix = ".so"
+        else:
+            raise RuntimeError("ssz-z-python supports Linux and macOS on x86_64 and ARM64 only")
         super().run()
         build_root = ROOT / "build"
         build_root.mkdir(exist_ok=True)
@@ -45,6 +54,7 @@ class BuildPy(build_py):
                     "build",
                     "-Doptimize=ReleaseSafe",
                     "-Dcpu=baseline",
+                    *target_options,
                     "-j2",
                     f"-Dpython={sys.executable}",
                     "--prefix",
@@ -56,7 +66,7 @@ class BuildPy(build_py):
             )
             libraries = []
             for preset in UPSTREAM["bindings"]["presets"]:
-                library = prefix / "lib" / f"libssz_z_{preset}.so"
+                library = prefix / "lib" / f"libssz_z_{preset}{suffix}"
                 if not library.is_file():
                     raise RuntimeError(f"Missing native library: {library}")
                 libraries.append(library)
@@ -72,8 +82,12 @@ class BuildPy(build_py):
 
 class NativeWheel(bdist_wheel):
     def get_tag(self):
-        _, _, platform = super().get_tag()
-        return "py3", "none", platform
+        if sys.platform == "darwin":
+            # The Zig build targets one architecture even with a universal2 Python.
+            version = MACOS_VERSION.replace(".", "_")
+            return "py3", "none", f"macosx_{version}_{platform.machine().lower()}"
+        _, _, platform_tag = super().get_tag()
+        return "py3", "none", platform_tag
 
 
 setup(distclass=NativeDistribution, cmdclass={"build_py": BuildPy, "bdist_wheel": NativeWheel})

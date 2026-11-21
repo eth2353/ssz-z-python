@@ -2,8 +2,10 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    if (target.result.os.tag != .linux or (target.result.cpu.arch != .x86_64 and target.result.cpu.arch != .aarch64)) {
-        @panic("ssz-z-python supports Linux AMD64 and ARM64 only");
+    const os = target.result.os.tag;
+    const arch = target.result.cpu.arch;
+    if ((os != .linux and os != .macos) or (arch != .x86_64 and arch != .aarch64)) {
+        @panic("ssz-z-python supports Linux and macOS on x86_64 and ARM64 only");
     }
     const optimize = b.standardOptimizeOption(.{});
     const selected = b.option([]const u8, "preset", "Build one preset instead of all three");
@@ -13,35 +15,37 @@ pub fn build(b: *std.Build) void {
     const lodestar = dependencyPath(b, sources.value, "lodestar");
     const hashtree_z = dependencyPath(b, sources.value, "hashtree-z");
     const hashtree_c = dependencyPath(b, sources.value, "hashtree");
-    const hash = b.addLibrary(.{
-        .name = "hashtree",
-        .linkage = .static,
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .pic = true }),
-    });
-    hash.step.dependOn(&fetch.step);
-    const arch = target.result.cpu.arch;
-    if (arch == .aarch64) {
-        hash.root_module.addCSourceFiles(.{
-            .root = hashtree_c.path(b, "src"),
-            .files = &.{ "sha256_armv8_neon_x4.S", "sha256_armv8_neon_x1.S", "sha256_armv8_crypto.S" },
-            .flags = &.{ "-g", "-fpic" },
-        });
-    } else {
-        hash.root_module.addCSourceFiles(.{
-            .root = hashtree_c.path(b, "src"),
-            .files = &.{ "sha256_shani.S", "sha256_avx_x16.S", "sha256_avx_x8.S", "sha256_avx_x4.S", "sha256_avx_x1.S", "sha256_sse_x1.S" },
-            .flags = &.{ "-g", "-fpic", "-fno-integrated-as" },
-        });
-    }
-    hash.root_module.addCSourceFiles(.{
-        .root = hashtree_c.path(b, "src"),
-        .files = &.{ "hashtree.c", "sha256_generic.c" },
-        .flags = &.{ "-g", "-Wall", "-Werror" },
-    });
-    hash.root_module.addIncludePath(hashtree_c.path(b, "src"));
     const hashtree = b.createModule(.{ .root_source_file = hashtree_z.path(b, "src/root.zig"), .target = target, .optimize = optimize });
-    hashtree.addIncludePath(hashtree_c.path(b, "src"));
-    hashtree.linkLibrary(hash);
+    // hashtree-z uses Zig's SHA-256 implementation on Intel macOS.
+    if (os == .linux or arch == .aarch64) {
+        const hash = b.addLibrary(.{
+            .name = "hashtree",
+            .linkage = .static,
+            .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .pic = true }),
+        });
+        hash.step.dependOn(&fetch.step);
+        if (arch == .aarch64) {
+            hash.root_module.addCSourceFiles(.{
+                .root = hashtree_c.path(b, "src"),
+                .files = &.{ "sha256_armv8_neon_x4.S", "sha256_armv8_neon_x1.S", "sha256_armv8_crypto.S" },
+                .flags = &.{ "-g", "-fpic" },
+            });
+        } else {
+            hash.root_module.addCSourceFiles(.{
+                .root = hashtree_c.path(b, "src"),
+                .files = &.{ "sha256_shani.S", "sha256_avx_x16.S", "sha256_avx_x8.S", "sha256_avx_x4.S", "sha256_avx_x1.S", "sha256_sse_x1.S" },
+                .flags = &.{ "-g", "-fpic", "-fno-integrated-as" },
+            });
+        }
+        hash.root_module.addCSourceFiles(.{
+            .root = hashtree_c.path(b, "src"),
+            .files = &.{ "hashtree.c", "sha256_generic.c" },
+            .flags = &.{ "-g", "-Wall", "-Werror" },
+        });
+        hash.root_module.addIncludePath(hashtree_c.path(b, "src"));
+        hashtree.addIncludePath(hashtree_c.path(b, "src"));
+        hashtree.linkLibrary(hash);
+    }
 
     var matched = false;
     for (sources.value.object.get("bindings").?.object.get("presets").?.array.items) |preset_entry| {

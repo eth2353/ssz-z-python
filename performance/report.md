@@ -1,6 +1,6 @@
 # Performance measurements
 
-Run benchmarks on supported Linux AMD64 or ARM64 systems. Record the CPU,
+Run benchmarks on a supported Linux or macOS system. Record the CPU,
 Python version, source revisions, and build options with each result.
 The harness records source/native hashes and input digests automatically.
 

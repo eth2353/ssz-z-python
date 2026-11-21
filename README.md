@@ -13,19 +13,21 @@ and minimal.
 
 ## Installation and development
 
-Linux AMD64 or ARM64 and Python 3.12 or newer are required. Install from source
-in your target environment:
+The library supports Linux on AMD64 and ARM64, and macOS 12 or newer on Intel
+and Apple Silicon. Use Python 3.12 or newer and install from source in your
+target environment:
 
 ```sh
 uv pip install .
 ```
 
 Source builds install the pinned Zig compiler through the build requirements,
-then compile all presets with `ReleaseSafe` and a baseline CPU target. AMD64
-also requires GNU binutils for the upstream assembly backend. No system Zig,
-Node.js, or Rust is required. Builds download checksummed native archives over
-HTTPS and cache their sources under `build/deps`. Populate that cache ahead of
-time with `python tools/fetch_native.py` for offline reuse.
+then compile all presets with `ReleaseSafe` and a baseline CPU target. Linux
+AMD64 also requires GNU binutils for the upstream assembly backend. Intel Macs
+use Zig's SHA-256 implementation. No system Zig, Node.js, or Rust is required.
+Builds download checksummed native archives over HTTPS and cache their sources
+under `build/deps`. Populate that cache ahead of time with
+`python tools/fetch_native.py` for offline reuse.
 
 The installed package has no runtime Python dependencies. It includes native
 libraries for the build machine's platform; portable public wheels are not
