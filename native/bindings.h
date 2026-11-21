@@ -9,6 +9,7 @@
  * 7 REST {data:...}->SSZ,
  * 8 block header SSZ (112 bytes) followed by unsigned block root (32 bytes),
  * 9 REST metadata JSON plus data_start/data_end byte offsets into the input.
+ * Operation 9 ignores fork/name; callers may supply empty strings.
  * ABI version is recorded in UPSTREAM.json. Calls synchronize hash initialization.
  * Status: 0 success, 1 invalid input (output is an error name), 2 allocation failure.
  * Free every non-NULL output with ssz_z_free, including error messages.

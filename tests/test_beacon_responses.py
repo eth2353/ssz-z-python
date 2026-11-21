@@ -189,3 +189,15 @@ def test_headers_select_codec_without_json_metadata(fork):
     headers = {"eth-consensus-version": fork, "eth-" + flag.replace("_", "-"): "false"}
     text = json.dumps({"data": json.loads(value.to_json())})
     assert load_proposal_json(text, preset="minimal", headers=headers).value == value
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_rest_metadata_does_not_require_an_ssz_type(preset):
+    from ssz_z._native import Operation, call
+
+    document = b'{"version":"fulu","data":{"example":1}}'
+    envelope = json.loads(call(preset, "", "", Operation.REST_METADATA, document))
+    assert envelope["metadata"] == {"version": "fulu"}
+    assert document[envelope["data_start"] : envelope["data_end"]] == b'{"example":1}'
+    with pytest.raises(SSZError):
+        call(preset, "", "", Operation.REST_METADATA, b'{"data":')

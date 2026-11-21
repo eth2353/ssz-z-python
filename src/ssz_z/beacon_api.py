@@ -335,7 +335,7 @@ def load_proposal_json(
     """Select a proposal codec from required headers, checking JSON metadata against them."""
     metadata = _header_metadata(headers)
     text = input_json(text)
-    envelope = decode_metadata(call(preset, "primitive", "Uint64", Operation.REST_METADATA, text))
+    envelope = decode_metadata(call(preset, "", "", Operation.REST_METADATA, text))
     for key, raw_value in envelope["metadata"].items():
         value = _metadata_value(key, raw_value)
         if key in _HEADER_FIELDS.values():

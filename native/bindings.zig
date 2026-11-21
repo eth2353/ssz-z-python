@@ -80,6 +80,7 @@ export fn ssz_z_abi_version() u32 {
 fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
     @setEvalBranchQuota(1_000_000);
     if (input.len > max_input_size) return error.InputTooLarge;
+    if (operation == .rest_metadata) return json_codec.restMetadata(allocator, input, writer);
     inline for (.{ "primitive", "electra", "fulu", "gloas" }) |fork_name| {
         if (std.mem.eql(u8, fork, fork_name)) {
             const namespace = @field(consensus, fork_name);
@@ -111,7 +112,6 @@ fn dispatch(allocator: std.mem.Allocator, fork: []const u8, name: []const u8, op
 
 fn process(comptime T: type, allocator: std.mem.Allocator, operation: Operation, input: []const u8, writer: *std.Io.Writer.Allocating) !void {
     switch (operation) {
-        .rest_metadata => return json_codec.restMetadata(allocator, input, writer),
         .type_schema => {
             var json: std.json.Stringify = .{ .writer = &writer.writer };
             return schema(T, &json);

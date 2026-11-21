@@ -36,7 +36,7 @@
     "archive_sha256": "3409309143d168a9aeef83588dbd01103619819dc1adb87939bff55dce3609bb"
   },
   "bindings": {
-    "abi_version": 2,
+    "abi_version": 3,
     "presets": [
       "mainnet",
       "minimal",
