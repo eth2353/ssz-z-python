@@ -15,7 +15,6 @@ from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).parent.resolve()
 UPSTREAM = json.loads((ROOT / "UPSTREAM.json").read_text())
-MACOS_VERSION = "12.0"
 MACOS_ARCHITECTURES = {"arm64": "aarch64", "x86_64": "x86_64"}
 
 
@@ -28,7 +27,7 @@ class BuildPy(build_py):
     def run(self):
         machine = platform.machine().lower()
         if sys.platform == "darwin" and machine in MACOS_ARCHITECTURES:
-            target_options = [f"-Dtarget={MACOS_ARCHITECTURES[machine]}-macos.{MACOS_VERSION}"]
+            target_options = [f"-Dtarget={MACOS_ARCHITECTURES[machine]}-macos"]
             suffix = ".dylib"
         elif sys.platform == "linux" and machine in {"x86_64", "aarch64"}:
             target_options = []
@@ -82,11 +81,11 @@ class BuildPy(build_py):
 
 class NativeWheel(bdist_wheel):
     def get_tag(self):
-        if sys.platform == "darwin":
-            # The Zig build targets one architecture even with a universal2 Python.
-            version = MACOS_VERSION.replace(".", "_")
-            return "py3", "none", f"macosx_{version}_{platform.machine().lower()}"
         _, _, platform_tag = super().get_tag()
+        if platform_tag.startswith("macosx_"):
+            # The Zig build targets one architecture even with a universal2 Python.
+            prefix, major, minor, _ = platform_tag.split("_", maxsplit=3)
+            platform_tag = f"{prefix}_{major}_{minor}_{platform.machine().lower()}"
         return "py3", "none", platform_tag
 
 
